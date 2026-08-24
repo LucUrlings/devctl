@@ -215,6 +215,8 @@ workspace_command() {
   validate_name TRAEFIK_ENTRYPOINT "$entrypoint"
   [[ -z $cert_resolver ]] || validate_name TRAEFIK_CERT_RESOLVER "$cert_resolver"
   validate_image "$image"
+  [[ -f $DEPLOY_DIR/hub.env ]] || die "run './setup.sh hub' first"
+  as_root test -s "$STATE_ROOT/ssh/authorized_keys" || die "run './setup.sh hub' with an authorized key first"
 
   mkdir -p "$DEPLOY_DIR/projects"
   local env_file=$DEPLOY_DIR/projects/$name.env
@@ -288,6 +290,7 @@ telegram_command() {
   [[ -f $token_file && -s $token_file ]] || die "token file is missing or empty"
   [[ $(wc -l < "$token_file") -le 1 && $(<"$token_file") != *[[:space:]]* ]] || \
     die "token file must contain only the BotFather token"
+  as_root test -d "$STATE_ROOT/herdr" || die "run './setup.sh hub' first"
 
   ensure_hub_env
   local hub_image
