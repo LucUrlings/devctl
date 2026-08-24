@@ -73,7 +73,7 @@ def workspace_action(workspace: Path, repo_url: str, get_origin: Callable[[], st
         raise WorkspaceError("workspace is non-empty but is not a Git repository")
     origin = get_origin()
     if canonical_origin(origin) != canonical_origin(repo_url):
-        raise WorkspaceError(f"origin mismatch: existing repository is {origin!r}")
+        raise WorkspaceError("origin mismatch: existing repository origin does not match REPO_URL")
     return "reuse"
 
 

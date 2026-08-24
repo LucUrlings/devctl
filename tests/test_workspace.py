@@ -79,12 +79,20 @@ class WorkspaceCloneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / ".git").mkdir()
-            with self.assertRaisesRegex(workspace.WorkspaceError, "origin mismatch"):
+            with self.assertRaisesRegex(workspace.WorkspaceError, "origin mismatch") as error:
                 workspace.workspace_action(
                     root,
                     "https://github.com/owner/expected",
                     lambda: "https://github.com/owner/other",
                 )
+            self.assertNotIn("other", str(error.exception))
+            with self.assertRaises(workspace.WorkspaceError) as credential_error:
+                workspace.workspace_action(
+                    root,
+                    "https://github.com/owner/expected",
+                    lambda: "https://secret@github.com/owner/other",
+                )
+            self.assertNotIn("secret", str(credential_error.exception))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "keep.txt").write_text("keep", encoding="utf-8")
