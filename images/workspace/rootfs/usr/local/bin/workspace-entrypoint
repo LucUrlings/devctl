@@ -119,7 +119,7 @@ for kind in ("ed25519", "rsa"):
 
 authorized = Path("/etc/ssh/authorized_keys")
 if not authorized.exists() or not authorized_keys_configured(authorized):
-    fail("no public keys are configured in /etc/ssh/authorized_keys")
+    print("workspace-entrypoint: no public SSH keys configured; SSH login is disabled", file=sys.stderr)
 
 Path("/run/sshd").mkdir(parents=True, exist_ok=True)
 for relative in (

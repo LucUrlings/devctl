@@ -3,7 +3,9 @@
 hub.env
 projects/*.env
 /deploy/hub.env
+/deploy/devctl.env
 /deploy/projects/*.env
+/deploy/projects/.lock
 *.local.env
 __pycache__/
 *.py[cod]
