@@ -1,0 +1,5 @@
+services:
+  workspace:
+    labels:
+      - "traefik.http.routers.${TRAEFIK_CODE_ROUTER}.tls.certresolver=${TRAEFIK_CERT_RESOLVER}"
+      - "traefik.http.routers.${TRAEFIK_PREVIEW_ROUTER}.tls.certresolver=${TRAEFIK_CERT_RESOLVER}"

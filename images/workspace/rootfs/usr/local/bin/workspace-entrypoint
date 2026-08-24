@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import os
+import pwd
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "/usr/local/lib")
+from devctl.clone import clone_command, workspace_action  # noqa: E402
+from devctl.errors import DevctlError  # noqa: E402
+
+
+def fail(message: str) -> None:
+    print(f"workspace-entrypoint: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def as_developer(command: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["runuser", "--user", "developer", "--", *command],
+        check=True,
+        text=True,
+        capture_output=capture,
+        env=os.environ.copy(),
+    )
+
+
+def chown_tree(root: Path, uid: int, gid: int) -> None:
+    """Repair bind-mount ownership without following repository symlinks."""
+    for directory, directories, files in os.walk(root, followlinks=False):
+        os.chown(directory, uid, gid, follow_symlinks=False)
+        for name in [*directories, *files]:
+            os.chown(Path(directory) / name, uid, gid, follow_symlinks=False)
+
+
+repo = os.environ.get("REPO_URL", "")
+workspace = Path(os.environ.get("WORKSPACE_PATH", "/workspace/project"))
+branch = os.environ.get("REPO_BRANCH", "")
+depth = os.environ.get("REPO_DEPTH", "")
+if not repo:
+    fail("REPO_URL is required")
+if workspace != Path("/workspace/project"):
+    fail("WORKSPACE_PATH must be /workspace/project in the managed image")
+
+workspace.mkdir(parents=True, exist_ok=True)
+developer = pwd.getpwnam("developer")
+chown_tree(workspace, developer.pw_uid, developer.pw_gid)
+try:
+    action = workspace_action(
+        workspace,
+        repo,
+        lambda: as_developer(
+            [
+                "git",
+                "-c",
+                f"safe.directory={workspace}",
+                "-C",
+                str(workspace),
+                "remote",
+                "get-url",
+                "origin",
+            ],
+            capture=True,
+        ).stdout.strip(),
+    )
+except (DevctlError, subprocess.CalledProcessError) as exc:
+    fail(str(exc))
+
+if repo.startswith("https://github.com/"):
+    # HOME is container-local, so recreate gh's credential-helper configuration
+    # after every container recreation. Authentication itself stays in GH_CONFIG_DIR.
+    subprocess.run(
+        ["runuser", "--user", "developer", "--", "gh", "auth", "setup-git"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=os.environ.copy(),
+    )
+
+if action == "clone":
+    try:
+        as_developer(clone_command(repo, workspace, branch, depth))
+    except (DevctlError, subprocess.CalledProcessError) as exc:
+        code = exc.returncode if isinstance(exc, subprocess.CalledProcessError) else 1
+        fail(f"Git clone failed with exit code {code}; repository data was not overwritten")
+
+keys = Path("/etc/ssh/devctl-host-keys")
+keys.mkdir(parents=True, exist_ok=True)
+for kind in ("ed25519", "rsa"):
+    private = keys / f"ssh_host_{kind}_key"
+    if not private.exists():
+        subprocess.run(["ssh-keygen", "-q", "-N", "", "-t", kind, "-f", str(private)], check=True)
+    private.chmod(0o600)
+    private.with_suffix(private.suffix + ".pub").chmod(0o644)
+
+authorized = Path("/etc/ssh/authorized_keys")
+if not authorized.exists() or not any(line.strip() and not line.lstrip().startswith("#") for line in authorized.read_text().splitlines()):
+    fail("no public keys are configured in /etc/ssh/authorized_keys")
+
+Path("/run/sshd").mkdir(parents=True, exist_ok=True)
+for relative in (
+    ".vscode-server",
+    ".codex",
+    ".claude",
+    ".config",
+    ".config/gh",
+    ".config/code-server",
+):
+    target = Path("/home/developer") / relative
+    target.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chown(target, developer.pw_uid, developer.pw_gid)
+    except PermissionError:
+        pass
+
+os.execv("/usr/local/bin/workspace-supervisor", ["workspace-supervisor"])

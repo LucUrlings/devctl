@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'codex=%s\n' "$(codex --version | awk '{print $NF}')"
+printf 'claude=%s\n' "$(claude --version | awk '{print $1}')"
+printf 'herdr=%s\n' "$(herdr --version | awk '{print $NF}')"
+printf 'code-server=%s\n' "$(code-server --version | tail -1 | awk '{print $1}')"
+printf 'gh=%s\n' "$(gh --version | head -1 | awk '{print $3}')"
+printf 'docker=%s\n' "$(docker --version | awk '{print $3}' | tr -d ',')"
+printf 'docker-buildx=%s\n' "$(docker buildx version | awk '{print $2}' | tr -d v)"
+printf 'docker-compose=%s\n' "$(docker compose version --short | tr -d v)"
+printf 'ccgram=%s\n' "$(ccgram --version | awk '{print $NF}')"
+printf 'node=%s\n' "$(node --version | tr -d v)"
+printf 'npm=%s\n' "$(npm --version)"
+printf 'python=%s\n' "$(python3 --version | awk '{print $2}')"
+printf 'uv=%s\n' "$(uv --version | awk '{print $2}')"
+printf 'pipx=%s\n' "$(pipx --version)"

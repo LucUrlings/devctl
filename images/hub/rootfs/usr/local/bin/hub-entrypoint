@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+devctl init >/dev/null
+install -d -m 0755 /srv/devctl/herdr /srv/devctl/herdr/run
+install -d -o developer -g developer -m 0700 \
+  /srv/devctl/ccgram /srv/devctl/shared/codex /srv/devctl/shared/claude /srv/devctl/shared/gh
+
+ccgram_enabled=${CCGRAM_ENABLED:-false}
+case "$ccgram_enabled" in
+  true|false) ;;
+  *) echo "hub-entrypoint: CCGRAM_ENABLED must be true or false" >&2; exit 2 ;;
+esac
+ccgram_config=${CCGRAM_CONFIG_FILE:-/srv/devctl/config/ccgram.env}
+if [[ "$ccgram_enabled" == true && -s "$ccgram_config" ]]; then
+  if ! grep -qx 'CCGRAM_MULTIPLEXER=herdr' "$ccgram_config"; then
+    echo "hub-entrypoint: CCGRAM_MULTIPLEXER must be herdr" >&2
+    exit 1
+  fi
+fi
+
+# CCGram's supported hook installers update the shared agent configuration.
+# The same pinned CCGram client exists in every workspace, where the hooks run.
+if [[ "$ccgram_enabled" == true ]]; then
+  runuser --user developer -- env \
+    HOME=/home/developer \
+    CLAUDE_CONFIG_DIR=/srv/devctl/shared/claude \
+    CCGRAM_DIR=/srv/devctl/ccgram \
+    ccgram hook --provider claude --install >/dev/null
+  runuser --user developer -- env \
+    HOME=/home/developer \
+    CCGRAM_DIR=/srv/devctl/ccgram \
+    ccgram hook --provider codex --install >/dev/null
+fi
+
+exec /usr/local/bin/hub-supervisor

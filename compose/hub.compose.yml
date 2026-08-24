@@ -1,0 +1,31 @@
+name: devctl-hub
+
+services:
+  hub:
+    image: ${HUB_IMAGE}
+    restart: unless-stopped
+    environment:
+      DEVCTL_ROOT: /srv/devctl
+      XDG_CONFIG_HOME: /srv/devctl
+      HERDR_CONFIG_PATH: /srv/devctl/herdr/config.toml
+      HERDR_SOCKET_PATH: /srv/devctl/herdr/run/herdr.sock
+      CCGRAM_DIR: /srv/devctl/ccgram
+      CCGRAM_ENABLED: ${CCGRAM_ENABLED:-false}
+      CCGRAM_MULTIPLEXER: herdr
+      CLAUDE_CONFIG_DIR: /srv/devctl/shared/claude
+      CODEX_HOME: /srv/devctl/shared/codex
+      GH_CONFIG_DIR: /srv/devctl/shared/gh
+      TELEGRAM_BOT_TOKEN_FILE: /srv/devctl/secrets/telegram-bot-token
+      CCGRAM_CONFIG_FILE: /srv/devctl/config/ccgram.env
+    volumes:
+      - /srv/devctl:/srv/devctl
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      devctl.managed: "true"
+      devctl.role: hub
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/hub-healthcheck"]
+      interval: 15s
+      timeout: 8s
+      retries: 8
+      start_period: 20s

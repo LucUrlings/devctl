@@ -1,0 +1,44 @@
+# Owner: @LucUrlings; latest Docker Buildx embeds go-archive v0.2.1; expires 2026-09-30.
+CVE-2026-17106
+# Owner: @LucUrlings; active setuptools is 80.9.0 but base-image SBOM is stale; expires 2026-09-30.
+CVE-2025-47273
+# Owner: @LucUrlings; latest setuptools 80.9.0 vendors jaraco.context 5.3.0; expires 2026-09-30.
+CVE-2026-23949
+# Owner: @LucUrlings; latest setuptools 80.9.0 vendors wheel 0.45.1; expires 2026-09-30.
+CVE-2026-24049
+# Owner: @LucUrlings; active msgpack is 1.2.1 but base-image SBOM is stale; expires 2026-09-30.
+GHSA-6v7p-g79w-8964
+
+# Owner: @LucUrlings; latest Docker 29.7.2 binaries use Go 1.26.5; expires 2026-09-30.
+CVE-2026-33818
+# Owner: @LucUrlings; latest Docker 29.7.2 embeds Moby below the library fix; expires 2026-09-30.
+CVE-2026-34040
+# Owner: @LucUrlings; latest Docker 29.7.2 binaries use Go 1.26.5; expires 2026-09-30.
+CVE-2026-39821
+# Owner: @LucUrlings; latest Docker 29.7.2 binaries use Go 1.26.5; expires 2026-09-30.
+CVE-2026-46600
+# Owner: @LucUrlings; latest Docker 29.7.2 binaries use Go 1.26.5; expires 2026-09-30.
+CVE-2026-56853
+# Owner: @LucUrlings; latest Docker 29.7.2 binaries use Go 1.26.5; expires 2026-09-30.
+CVE-2026-56858
+# Owner: @LucUrlings; latest Docker 29.7.2 binaries use Go 1.26.5; expires 2026-09-30.
+CVE-2026-56859
+# Owner: @LucUrlings; latest Docker 29.7.2 binaries use Go 1.26.5; expires 2026-09-30.
+CVE-2026-56860
+# Owner: @LucUrlings; latest Docker 29.7.2 binaries use Go 1.26.5; expires 2026-09-30.
+CVE-2026-56862
+# Owner: @LucUrlings; latest GitHub/Docker binaries embed x/mod v0.38.0; expires 2026-09-30.
+CVE-2026-56864
+# Owner: @LucUrlings; latest GitHub/Docker binaries embed x/mod v0.38.0; expires 2026-09-30.
+CVE-2026-56865
+
+# Owner: @LucUrlings; latest npm 12.0.2 bundles brace-expansion 5.0.7; expires 2026-09-30.
+CVE-2026-14257
+# Owner: @LucUrlings; latest npm 12.0.2 bundles brace-expansion 5.0.7; expires 2026-09-30.
+CVE-2026-69152
+# Owner: @LucUrlings; latest npm 12.0.2 bundles ip-address 10.2.0; expires 2026-09-30.
+CVE-2026-69192
+# Owner: @LucUrlings; latest npm/code-server bundles tar below 7.5.21; expires 2026-09-30.
+CVE-2026-73566
+# Owner: @LucUrlings; latest code-server 4.133.0 bundles js-yaml 4.3.0; expires 2026-09-30.
+GHSA-5p4m-2wfm-xmqj

@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+import socket
+import urllib.request
+from pathlib import Path
+
+if not (Path("/workspace/project") / ".git").exists():
+    raise SystemExit(1)
+with socket.create_connection(("127.0.0.1", 22), timeout=2):
+    pass
+with urllib.request.urlopen("http://127.0.0.1:8080/healthz", timeout=3) as response:
+    raise SystemExit(0 if response.status == 200 else 1)

@@ -1,0 +1,88 @@
+name: devctl-${PROJECT_NAME}
+
+services:
+  workspace:
+    image: ${WORKSPACE_IMAGE}
+    restart: unless-stopped
+    environment:
+      PROJECT_NAME: ${PROJECT_NAME}
+      REPO_URL: ${REPO_URL}
+      REPO_BRANCH: ${REPO_BRANCH:-}
+      REPO_DEPTH: ${REPO_DEPTH:-}
+      WORKSPACE_PATH: ${WORKSPACE_PATH:-/workspace/project}
+      PREVIEW_PORT: ${PREVIEW_PORT:-3000}
+      CODEX_HOME: /home/developer/.codex
+      CLAUDE_CONFIG_DIR: /home/developer/.claude
+      GH_CONFIG_DIR: /home/developer/.config/gh
+      HERDR_SOCKET_PATH: ${HERDR_SOCKET_PATH:-/run/herdr/herdr.sock}
+      CCGRAM_DIR: /srv/devctl/ccgram
+    volumes:
+      - type: bind
+        source: ${PROJECT_DIR}/repo
+        target: /workspace/project
+      - type: bind
+        source: ${PROJECT_DIR}/ssh-host-keys
+        target: /etc/ssh/devctl-host-keys
+      - type: bind
+        source: ${PROJECT_DIR}/vscode-server
+        target: /home/developer/.vscode-server
+      - type: bind
+        source: /srv/devctl/shared/codex
+        target: /home/developer/.codex
+      - type: bind
+        source: /srv/devctl/shared/claude
+        target: /home/developer/.claude
+      - type: bind
+        source: /srv/devctl/shared/gh
+        target: /home/developer/.config/gh
+      - type: bind
+        source: /srv/devctl/ssh/authorized_keys
+        target: /etc/ssh/authorized_keys
+        read_only: true
+      - type: bind
+        source: /srv/devctl/herdr/run
+        target: /run/herdr
+        read_only: true
+      - type: bind
+        source: /srv/devctl/ccgram
+        target: /srv/devctl/ccgram
+    ports:
+      - "127.0.0.1:${SSH_PORT}:22"
+    expose:
+      - "8080"
+      - "${PREVIEW_PORT:-3000}"
+    networks:
+      - traefik
+    labels:
+      - "devctl.managed=true"
+      - "devctl.project=${PROJECT_NAME}"
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+      - "traefik.http.routers.${TRAEFIK_CODE_ROUTER}.rule=Host(`${CODE_HOST}`)"
+      - "traefik.http.routers.${TRAEFIK_CODE_ROUTER}.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.${TRAEFIK_CODE_ROUTER}.middlewares=${TRAEFIK_AUTH_MIDDLEWARE}"
+      - "traefik.http.routers.${TRAEFIK_CODE_ROUTER}.tls=true"
+      - "traefik.http.routers.${TRAEFIK_CODE_ROUTER}.service=${TRAEFIK_CODE_ROUTER}"
+      - "traefik.http.services.${TRAEFIK_CODE_ROUTER}.loadbalancer.server.port=8080"
+      - "traefik.http.routers.${TRAEFIK_PREVIEW_ROUTER}.rule=Host(`${PREVIEW_HOST}`)"
+      - "traefik.http.routers.${TRAEFIK_PREVIEW_ROUTER}.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.${TRAEFIK_PREVIEW_ROUTER}.middlewares=${TRAEFIK_AUTH_MIDDLEWARE}"
+      - "traefik.http.routers.${TRAEFIK_PREVIEW_ROUTER}.tls=true"
+      - "traefik.http.routers.${TRAEFIK_PREVIEW_ROUTER}.service=${TRAEFIK_PREVIEW_ROUTER}"
+      - "traefik.http.services.${TRAEFIK_PREVIEW_ROUTER}.loadbalancer.server.port=${PREVIEW_PORT:-3000}"
+    deploy:
+      resources:
+        limits:
+          cpus: ${WORKSPACE_CPUS:-4}
+          memory: ${WORKSPACE_MEMORY:-8G}
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/workspace-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK}

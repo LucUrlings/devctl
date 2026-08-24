@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+docker version >/dev/null
+herdr status server >/dev/null
+[[ -S ${HERDR_SOCKET_PATH:-/srv/devctl/herdr/run/herdr.sock} ]]
+if [[ ${CCGRAM_ENABLED:-false} == true ]]; then
+  [[ -s ${CCGRAM_CONFIG_FILE:-/srv/devctl/config/ccgram.env} ]]
+  [[ -s ${TELEGRAM_BOT_TOKEN_FILE:-/srv/devctl/secrets/telegram-bot-token} ]]
+  pgrep -f '/usr/local/bin/ccgram run($| )' >/dev/null
+  runuser --user developer --preserve-environment -- ccgram status >/dev/null
+fi

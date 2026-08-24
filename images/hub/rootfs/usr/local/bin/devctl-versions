@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'herdr=%s\n' "$(herdr --version | awk '{print $NF}')"
+printf 'ccgram=%s\n' "$(ccgram --version | awk '{print $NF}')"
+printf 'codex=%s\n' "$(codex --version | awk '{print $NF}')"
+printf 'claude=%s\n' "$(claude --version | awk '{print $1}')"
+printf 'devctl=%s\n' "$(python3 -c 'import devctl; print(devctl.__version__)')"
+printf 'gh=%s\n' "$(gh --version | head -1 | awk '{print $3}')"
+printf 'docker=%s\n' "$(docker --version | awk '{print $3}' | tr -d ',')"
+printf 'docker-buildx=%s\n' "$(docker buildx version | awk '{print $2}' | tr -d v)"
+printf 'docker-compose=%s\n' "$(docker compose version --short | tr -d v)"
+printf 'node=%s\n' "$(node --version | tr -d v)"
+printf 'python=%s\n' "$(python3 --version | awk '{print $2}')"
