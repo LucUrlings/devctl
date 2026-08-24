@@ -92,13 +92,10 @@ RUN chmod +x /tmp/install-release-tools.sh \
       "msgpack==${MSGPACK_VERSION}" \
       "setuptools==${SETUPTOOLS_VERSION}"
 
-COPY devctl /opt/devctl
-COPY compose /opt/devctl/compose
-RUN uv pip install --system --no-cache /opt/devctl
 COPY images/hub/rootfs/ /
 RUN chmod 0755 /usr/local/bin/dev-enter /usr/local/bin/hub-entrypoint \
-      /usr/local/bin/hub-supervisor /usr/local/bin/herdr-server-launch \
-      /usr/local/bin/ccgram-launch /usr/local/bin/hub-healthcheck /usr/local/bin/devctl-versions
+      /usr/local/bin/herdr-server-launch /usr/local/bin/ccgram-launch \
+      /usr/local/bin/hub-healthcheck /usr/local/bin/image-versions
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hub-entrypoint"]
-HEALTHCHECK --interval=15s --timeout=8s --start-period=20s --retries=8 CMD ["/usr/local/bin/hub-healthcheck"]
+CMD ["herdr"]

@@ -10,8 +10,3 @@
 .mypy_cache
 .ruff_cache
 projects
-shared
-secrets
-state
-herdr
-ccgram

@@ -128,10 +128,10 @@ RUN chmod +x /tmp/install-release-tools.sh \
     && rm /tmp/code-server.tar.gz
 
 COPY images/workspace/rootfs/ /
-COPY devctl/src/devctl/ /usr/local/lib/devctl/
 RUN chmod 0755 /usr/local/bin/workspace-entrypoint /usr/local/bin/workspace-supervisor \
-      /usr/local/bin/workspace-healthcheck /usr/local/bin/devctl-versions \
-    && chmod 0644 /etc/ssh/sshd_config.d/99-devctl.conf
+      /usr/local/bin/workspace-healthcheck /usr/local/bin/image-versions \
+    && chmod 0644 /etc/ssh/sshd_config.d/99-devctl.conf \
+      /usr/local/lib/devctl_workspace.py
 
 EXPOSE 22 8080 3000
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/workspace-entrypoint"]

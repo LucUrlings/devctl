@@ -1,26 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ ${CCGRAM_ENABLED:-false} != true ]]; then
-  exec sleep infinity
-fi
-config_file=${CCGRAM_CONFIG_FILE:-/srv/devctl/config/ccgram.env}
 token_file=${TELEGRAM_BOT_TOKEN_FILE:-/srv/devctl/secrets/telegram-bot-token}
-if [[ ! -s "$config_file" || ! -s "$token_file" ]]; then
-  echo "ccgram-launch: enabled but configuration or bot-token file is missing" >&2
+if [[ ! -s $token_file ]]; then
+  echo "ccgram-launch: bot-token file is missing or empty" >&2
   exit 1
 fi
-while IFS='=' read -r key value; do
-  case "$key" in
-    ALLOWED_USERS|CCGRAM_GROUP_ID|CCGRAM_MULTIPLEXER|CCGRAM_INSTANCE_NAME)
-      export "$key=$value"
-      ;;
-    ''|'#'*) ;;
-    *) echo "ccgram-launch: unsupported configuration key: $key" >&2; exit 2 ;;
-  esac
-done < "$config_file"
 export TELEGRAM_BOT_TOKEN
 TELEGRAM_BOT_TOKEN=$(<"$token_file")
-export CCGRAM_MULTIPLEXER=herdr
 export HERDR_SOCKET_PATH=${HERDR_SOCKET_PATH:-/srv/devctl/herdr/run/herdr.sock}
 exec runuser --user developer --preserve-environment -- ccgram run

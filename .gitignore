@@ -1,5 +1,7 @@
 .DS_Store
 .env
+hub.env
+projects/*.env
 *.local.env
 __pycache__/
 *.py[cod]
@@ -11,14 +13,4 @@ dist/
 build/
 *.egg-info/
 
-# Runtime state and credentials when the checkout is /srv/devctl.
-/ccgram/
-/herdr/
-/projects/
-/secrets/
-/shared/
-/ssh/
-/state/
-/config/devctl.env
-/compose/*.generated.yml
 /.trivycache/

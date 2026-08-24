@@ -1,8 +1,0 @@
-services:
-  workspace:
-    environment:
-      SSH_AUTH_SOCK: /run/devctl-ssh-agent
-    volumes:
-      - type: bind
-        source: ${GIT_SSH_AUTH_SOCK_HOST_PATH}
-        target: /run/devctl-ssh-agent

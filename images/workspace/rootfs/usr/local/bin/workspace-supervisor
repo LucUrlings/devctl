@@ -27,7 +27,7 @@ environment = os.environ.copy()
 commands = [
     ["/usr/sbin/sshd", "-D", "-e"],
     [
-        "runuser", "--user", "developer", "--", "code-server",
+        "runuser", "--user", "developer", "--", "env", "HOME=/home/developer", "code-server",
         "--bind-addr", "0.0.0.0:8080", "--auth", "none", "--disable-telemetry",
         "/workspace/project",
     ],

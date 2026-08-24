@@ -8,8 +8,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, "/usr/local/lib")
-from devctl.clone import clone_command, workspace_action  # noqa: E402
-from devctl.errors import DevctlError  # noqa: E402
+from devctl_workspace import (  # noqa: E402
+    WorkspaceError,
+    clone_command,
+    normalize_repo_url,
+    validate_slug,
+    workspace_action,
+)
 
 
 def fail(message: str) -> None:
@@ -19,7 +24,7 @@ def fail(message: str) -> None:
 
 def as_developer(command: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["runuser", "--user", "developer", "--", *command],
+        ["runuser", "--user", "developer", "--", "env", "HOME=/home/developer", *command],
         check=True,
         text=True,
         capture_output=capture,
@@ -36,11 +41,17 @@ def chown_tree(root: Path, uid: int, gid: int) -> None:
 
 
 repo = os.environ.get("REPO_URL", "")
+project = os.environ.get("PROJECT_NAME", "")
 workspace = Path(os.environ.get("WORKSPACE_PATH", "/workspace/project"))
 branch = os.environ.get("REPO_BRANCH", "")
 depth = os.environ.get("REPO_DEPTH", "")
 if not repo:
     fail("REPO_URL is required")
+try:
+    validate_slug(project)
+    repo = normalize_repo_url(repo)
+except WorkspaceError as exc:
+    fail(str(exc))
 if workspace != Path("/workspace/project"):
     fail("WORKSPACE_PATH must be /workspace/project in the managed image")
 
@@ -65,14 +76,24 @@ try:
             capture=True,
         ).stdout.strip(),
     )
-except (DevctlError, subprocess.CalledProcessError) as exc:
+except (WorkspaceError, subprocess.CalledProcessError) as exc:
     fail(str(exc))
 
 if repo.startswith("https://github.com/"):
     # HOME is container-local, so recreate gh's credential-helper configuration
     # after every container recreation. Authentication itself stays in GH_CONFIG_DIR.
     subprocess.run(
-        ["runuser", "--user", "developer", "--", "gh", "auth", "setup-git"],
+        [
+            "runuser",
+            "--user",
+            "developer",
+            "--",
+            "env",
+            "HOME=/home/developer",
+            "gh",
+            "auth",
+            "setup-git",
+        ],
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -82,7 +103,7 @@ if repo.startswith("https://github.com/"):
 if action == "clone":
     try:
         as_developer(clone_command(repo, workspace, branch, depth))
-    except (DevctlError, subprocess.CalledProcessError) as exc:
+    except (WorkspaceError, subprocess.CalledProcessError) as exc:
         code = exc.returncode if isinstance(exc, subprocess.CalledProcessError) else 1
         fail(f"Git clone failed with exit code {code}; repository data was not overwritten")
 

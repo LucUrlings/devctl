@@ -11,6 +11,7 @@ case "$agent" in
   codex|claude|shell) ;;
   *) echo "dev-enter: agent must be codex, claude, or shell" >&2; exit 2 ;;
 esac
+export HERDR_AGENT=$agent
 
 mapfile -t matches < <(docker ps \
   --filter label=devctl.managed=true \

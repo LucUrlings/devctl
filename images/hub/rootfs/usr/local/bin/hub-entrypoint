@@ -2,36 +2,47 @@
 set -euo pipefail
 umask 077
 
-devctl init >/dev/null
-install -d -m 0755 /srv/devctl/herdr /srv/devctl/herdr/run
-install -d -o developer -g developer -m 0700 \
-  /srv/devctl/ccgram /srv/devctl/shared/codex /srv/devctl/shared/claude /srv/devctl/shared/gh
-
-ccgram_enabled=${CCGRAM_ENABLED:-false}
-case "$ccgram_enabled" in
-  true|false) ;;
-  *) echo "hub-entrypoint: CCGRAM_ENABLED must be true or false" >&2; exit 2 ;;
+mode=${1:-herdr}
+case "$mode" in
+  herdr)
+    install -d -m 0755 /srv/devctl/herdr /srv/devctl/herdr/run
+    install -d -o developer -g developer -m 0700 \
+      /srv/devctl/shared/codex /srv/devctl/shared/claude /srv/devctl/shared/gh
+    exec /usr/local/bin/herdr-server-launch
+    ;;
+  ccgram)
+    [[ ${CCGRAM_MULTIPLEXER:-} == herdr ]] || {
+      echo "hub-entrypoint: CCGRAM_MULTIPLEXER must be herdr" >&2
+      exit 2
+    }
+    [[ ${ALLOWED_USERS:-} =~ ^[0-9]+(,[0-9]+)*$ ]] || {
+      echo "hub-entrypoint: ALLOWED_USERS must be comma-separated numeric user IDs" >&2
+      exit 2
+    }
+    [[ ${CCGRAM_GROUP_ID:-} =~ ^-100[0-9]+$ ]] || {
+      echo "hub-entrypoint: CCGRAM_GROUP_ID must be a supergroup ID beginning with -100" >&2
+      exit 2
+    }
+    token_file=${TELEGRAM_BOT_TOKEN_FILE:-/srv/devctl/secrets/telegram-bot-token}
+    [[ -s $token_file ]] || {
+      echo "hub-entrypoint: Telegram bot token file is missing or empty" >&2
+      exit 2
+    }
+    install -d -o developer -g developer -m 0700 \
+      /srv/devctl/ccgram /srv/devctl/shared/codex /srv/devctl/shared/claude
+    runuser --user developer -- env \
+      HOME=/home/developer \
+      CLAUDE_CONFIG_DIR=/srv/devctl/shared/claude \
+      CCGRAM_DIR=/srv/devctl/ccgram \
+      ccgram hook --provider claude --install >/dev/null
+    runuser --user developer -- env \
+      HOME=/home/developer \
+      CCGRAM_DIR=/srv/devctl/ccgram \
+      ccgram hook --provider codex --install >/dev/null
+    exec /usr/local/bin/ccgram-launch
+    ;;
+  *)
+    echo "hub-entrypoint: expected 'herdr' or 'ccgram'" >&2
+    exit 2
+    ;;
 esac
-ccgram_config=${CCGRAM_CONFIG_FILE:-/srv/devctl/config/ccgram.env}
-if [[ "$ccgram_enabled" == true && -s "$ccgram_config" ]]; then
-  if ! grep -qx 'CCGRAM_MULTIPLEXER=herdr' "$ccgram_config"; then
-    echo "hub-entrypoint: CCGRAM_MULTIPLEXER must be herdr" >&2
-    exit 1
-  fi
-fi
-
-# CCGram's supported hook installers update the shared agent configuration.
-# The same pinned CCGram client exists in every workspace, where the hooks run.
-if [[ "$ccgram_enabled" == true ]]; then
-  runuser --user developer -- env \
-    HOME=/home/developer \
-    CLAUDE_CONFIG_DIR=/srv/devctl/shared/claude \
-    CCGRAM_DIR=/srv/devctl/ccgram \
-    ccgram hook --provider claude --install >/dev/null
-  runuser --user developer -- env \
-    HOME=/home/developer \
-    CCGRAM_DIR=/srv/devctl/ccgram \
-    ccgram hook --provider codex --install >/dev/null
-fi
-
-exec /usr/local/bin/hub-supervisor
