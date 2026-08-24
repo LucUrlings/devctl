@@ -88,7 +88,7 @@ jobs:
           provenance: mode=max
           sbom: true
       - name: Publish GitHub artifact attestation
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.event.repository.visibility == 'public'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-name: ghcr.io/${{ steps.owner.outputs.value }}/devctl-${{ matrix.image }}
