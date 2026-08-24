@@ -131,6 +131,7 @@ wait_for_telegram() {
 }
 
 authorized_keys_configured() {
+  # shellcheck disable=SC2016 # $0 is evaluated by awk, not by Bash.
   as_root awk -v pattern="$PUBLIC_KEY_REGEX" '
     $0 !~ /^[[:space:]]*#/ && $0 ~ pattern { found = 1 }
     END { exit !found }
