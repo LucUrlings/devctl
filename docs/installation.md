@@ -57,7 +57,7 @@ No Git checkout, Dockerfile, test suite, or documentation tree is installed. Ini
 
 ## Images and upgrades
 
-Both images support amd64 and arm64. Tags on `main` are `latest`, `main`, and `sha-<short-sha>`. A `v1.2.3` release also produces `1.2.3`, `1.2`, and `1`. Builds attach SBOM and max-mode provenance.
+Both images support amd64 and arm64. Tags on `main` are `latest`, `main`, and `sha-<short-sha>`. After a successful build, CI automatically increments the patch version, creates the Git tag and GitHub release, publishes the CLI packages, and adds the matching `1.2.3`, `1.2`, and `1` image tags. `DEVCTL_VERSION` is only the minimum used for an intentional minor or major jump. Builds attach SBOM and max-mode provenance.
 
 Install the new launcher package, back up `/srv/devctl`, and upgrade the hub:
 

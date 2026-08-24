@@ -122,7 +122,7 @@ The package installs one small launcher at `/usr/bin/devctl`. It locates exactly
 
 The hub runs one supervised `herdr server` and one optional CCGram process. `/srv/devctl` is mounted at the identical path inside the hub because bind paths sent through the host Docker socket are resolved on the Docker host. State includes project definitions, checkouts, allocated ports, Herdr state, CCGram state, shared authentication, and SSH host keys.
 
-Detailed clean-server steps are in [installation.md](docs/installation.md). The selected upstream versions and artifact hashes live in [`versions.env`](versions.env); build arguments are mirrored in [`docker-bake.hcl`](docker-bake.hcl).
+Detailed clean-server steps are in [installation.md](docs/installation.md). The selected upstream versions and artifact hashes live in [`versions.env`](versions.env); build arguments are mirrored in [`docker-bake.hcl`](docker-bake.hcl). Every successful `main` container build automatically increments the latest patch version, creates the Git tag and GitHub release, publishes the CLI packages, and applies matching GHCR tags. Set `DEVCTL_VERSION` only to intentionally jump to a newer minor or major series.
 
 ## Traefik and URLs
 

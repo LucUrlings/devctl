@@ -3,35 +3,144 @@ name: CLI release
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_run:
+    workflows: [Containers]
+    types: [completed]
 
 permissions:
   contents: read
 
 concurrency:
-  group: cli-release-${{ github.ref }}
+  group: cli-release-${{ github.event.workflow_run.head_sha || github.ref }}
   cancel-in-progress: false
 
 jobs:
   test:
+    if: github.event_name == 'push'
     uses: ./.github/workflows/_test.yml
 
   release:
     needs: test
+    if: >-
+      always() &&
+      ((github.event_name == 'push' && needs.test.result == 'success') ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'))
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      packages: write
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Build universal Linux packages
-        shell: bash
-        run: ./scripts/package-release.sh "${GITHUB_REF_NAME#v}"
-      - name: Publish GitHub release
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+      - name: Resolve release version
+        id: version
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME" dist/*
-          --verify-tag
-          --generate-notes
-          --title "Devctl $GITHUB_REF_NAME"
+          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == workflow_run ]]; then
+            sha=$WORKFLOW_SHA
+            releases=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100")
+            existing_tag=$(jq -r --arg sha "$sha" \
+              '.[] | select(.draft == false and .target_commitish == $sha) | .tag_name' \
+              <<< "$releases" | head -1)
+            if [[ -n "$existing_tag" ]]; then
+              tag=$existing_tag
+              version=${tag#v}
+              publish=false
+            else
+              minimum=$(sed -n 's/^DEVCTL_VERSION=//p' versions.env)
+              latest=$(jq -r '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+                <<< "$releases" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
+              if [[ -n "$latest" ]]; then
+                current=${latest#v}
+                major=${current%%.*}
+                remainder=${current#*.}
+                minor=${remainder%%.*}
+                patch=${current##*.}
+                candidate="$major.$minor.$((patch + 1))"
+                version=$(printf '%s\n%s\n' "$minimum" "$candidate" | sort -V | tail -1)
+              else
+                version=$minimum
+              fi
+              tag="v$version"
+              publish=true
+            fi
+          else
+            version=${GITHUB_REF_NAME#v}
+            sha=$GITHUB_SHA
+            tag="v$version"
+            if gh release view "$tag" >/dev/null 2>&1; then
+              publish=false
+            else
+              publish=true
+            fi
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "sha=$sha"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build universal Linux packages
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        run: ./scripts/package-release.sh "${{ steps.version.outputs.version }}"
+      - name: Set up Buildx
+        if: github.event_name == 'workflow_run' && steps.version.outputs.publish == 'true'
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+        with:
+          version: v0.36.1
+      - name: Log in to GHCR
+        if: github.event_name == 'workflow_run' && steps.version.outputs.publish == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Add semantic image tags
+        if: github.event_name == 'workflow_run' && steps.version.outputs.publish == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SOURCE_SHA: ${{ steps.version.outputs.sha }}
+        run: |
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          major=${VERSION%%.*}
+          minor=${VERSION%.*}
+          short_sha=${SOURCE_SHA:0:7}
+          for component in hub workspace; do
+            image="ghcr.io/$owner/devctl-$component"
+            source="$image:sha-$short_sha"
+            for _attempt in 1 2 3 4 5 6; do
+              docker buildx imagetools inspect "$source" >/dev/null 2>&1 && break
+              sleep 5
+            done
+            docker buildx imagetools create \
+              --tag "$image:$VERSION" \
+              --tag "$image:$minor" \
+              --tag "$image:$major" \
+              "$source"
+          done
+      - name: Publish GitHub release
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_SHA: ${{ steps.version.outputs.sha }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/* \
+            --target "$RELEASE_SHA" \
+            --generate-notes \
+            --title "Devctl $RELEASE_TAG"
+      - name: Existing release
+        if: steps.version.outputs.publish == 'false'
+        run: echo "${{ steps.version.outputs.tag }} already publishes this commit."
