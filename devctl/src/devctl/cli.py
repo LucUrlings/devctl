@@ -558,10 +558,7 @@ def telegram(config: Config, action: str) -> None:
     atomic_write(token_file, token + "\n", 0o600)
     upsert_env(config.root / "config" / "devctl.env", "CCGRAM_ENABLED", "true")
     print("Telegram configuration written and CCGRAM_ENABLED=true")
-    print(
-        "The installed host devctl wrapper will now recreate the hub. If this command "
-        "was run inside the container directly, recreate the hub with scripts/install.sh."
-    )
+    print("The installed host devctl wrapper will now recreate the hub.")
 
 
 def doctor(config: Config) -> int:

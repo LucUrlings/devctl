@@ -31,3 +31,8 @@ def test_packaged_launcher_requires_no_server_repository_checkout() -> None:
     assert "/srv/devctl/scripts" not in LAUNCHER
     assert "--filter label=devctl.role=hub" in LAUNCHER
     assert "--filter label=devctl.managed=true" in LAUNCHER
+
+
+def test_telegram_guidance_does_not_reference_a_server_checkout() -> None:
+    cli = (ROOT / "devctl/src/devctl/cli.py").read_text(encoding="utf-8")
+    assert "scripts/install.sh" not in cli
