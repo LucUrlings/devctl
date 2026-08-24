@@ -5,7 +5,11 @@ Two Docker images and two Compose deployments: one permanent Herdr control plane
 ## TL;DR
 
 ```bash
-# On the Docker server: download only the deployment bundle.
+# On your laptop: connect to the Docker server (for example, aether).
+ssh <docker-server>
+
+# Now on the Docker server: download only the deployment bundle.
+# This ~/devctl-deploy folder may be replaced with any folder you prefer.
 mkdir -p ~/devctl-deploy/projects && cd ~/devctl-deploy
 curl -fsSLO https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/hub.compose.yml
 curl -fsSLO https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/hub.env.example
@@ -25,13 +29,15 @@ chmod +x setup.sh
   --traefik-network <traefik-network> \
   --auth-middleware <oauth-middleware>
 
-# Paste the printed SSH block into ~/.ssh/config, then:
-ssh dev-<project>
-
-# Optional Telegram only:
+# Still on the Docker server, optional Telegram only:
 ./setup.sh telegram --allowed-users <user-id>[,<user-id>] \
   --group-id <-100-supergroup-id> --token-file <bot-token-file>
+
+# Back on your laptop: paste the printed SSH block into ~/.ssh/config, then:
+ssh dev-<project>
 ```
+
+The downloaded deployment bundle can live anywhere. Persistent repositories, SSH host keys, agent credentials, and control-plane state live separately under `/srv/devctl`; that state path is fixed in the supplied Compose files to keep host bind mounts unambiguous.
 
 Use project names matching `[a-z0-9][a-z0-9-]{0,40}`. Choose a different free loopback SSH port in `22000-22999` for every project. Set `REPO_URL=<repo>` in each project env file.
 
