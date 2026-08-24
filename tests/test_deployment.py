@@ -64,6 +64,7 @@ class DeploymentTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn("ALLOWED_USERS", result.stderr)
+        self.assertIn("must have mode 0600", entrypoint.read_text(encoding="utf-8"))
 
     def test_dev_enter_validates_slug_and_resolves_labels(self) -> None:
         result = subprocess.run(

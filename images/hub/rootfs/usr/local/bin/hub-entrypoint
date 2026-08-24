@@ -28,6 +28,10 @@ case "$mode" in
       echo "hub-entrypoint: Telegram bot token file is missing or empty" >&2
       exit 2
     }
+    [[ $(stat -c '%a' -- "$token_file") == 600 ]] || {
+      echo "hub-entrypoint: Telegram bot token file must have mode 0600" >&2
+      exit 2
+    }
     install -d -o developer -g developer -m 0700 \
       /srv/devctl/ccgram /srv/devctl/shared/codex /srv/devctl/shared/claude
     runuser --user developer -- env \
