@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -12,6 +14,15 @@ class WorkspaceError(ValueError):
 
 SAFE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$")
 SAFE_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
+PUBLIC_KEY_TYPES = {
+    "ssh-ed25519",
+    "ssh-rsa",
+    "ecdsa-sha2-nistp256",
+    "ecdsa-sha2-nistp384",
+    "ecdsa-sha2-nistp521",
+    "sk-ssh-ed25519@openssh.com",
+    "sk-ecdsa-sha2-nistp256@openssh.com",
+}
 
 
 def validate_slug(value: str) -> str:
@@ -65,6 +76,25 @@ def validate_ref(value: str) -> str:
     return value
 
 
+def authorized_keys_configured(path: Path) -> bool:
+    """Accept at least one structurally valid public-key line, including key options."""
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split()
+        for index, field in enumerate(fields[:-1]):
+            if field not in PUBLIC_KEY_TYPES:
+                continue
+            try:
+                decoded = base64.b64decode(fields[index + 1], validate=True)
+            except (binascii.Error, ValueError):
+                continue
+            if decoded:
+                return True
+    return False
+
+
 def workspace_action(workspace: Path, repo_url: str, get_origin: Callable[[], str]) -> str:
     entries = list(workspace.iterdir()) if workspace.exists() else []
     if not entries:
@@ -86,7 +116,11 @@ def clone_command(
     if branch:
         command += ["--branch", branch]
     if depth:
-        if not depth.isdigit() or int(depth) < 1:
-            raise WorkspaceError("REPO_DEPTH must be a positive integer")
+        if (
+            not depth.isdigit()
+            or len(depth) > 10
+            or not 1 <= int(depth) <= 2_147_483_647
+        ):
+            raise WorkspaceError("REPO_DEPTH must be between 1 and 2147483647")
         command += ["--depth", depth]
     return [*command, "--", repo_url, str(workspace)]

@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-docker image inspect devctl-hub:dev >/dev/null
-docker image inspect devctl-workspace:dev >/dev/null
-docker run --rm --entrypoint image-versions devctl-hub:dev
-docker run --rm --entrypoint image-versions devctl-workspace:dev
+hub_image=${HUB_IMAGE:-ghcr.io/lucurlings/devctl-hub:dev}
+workspace_image=${WORKSPACE_IMAGE:-ghcr.io/lucurlings/devctl-workspace:dev}
+
+docker image inspect "$hub_image" >/dev/null
+docker image inspect "$workspace_image" >/dev/null
+docker run --rm --entrypoint image-versions "$hub_image"
+docker run --rm --entrypoint image-versions "$workspace_image"
 echo "Image smoke tests passed"

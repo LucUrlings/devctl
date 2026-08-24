@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, "/usr/local/lib")
 from devctl_workspace import (  # noqa: E402
     WorkspaceError,
+    authorized_keys_configured,
     clone_command,
     normalize_repo_url,
     validate_slug,
@@ -117,7 +118,7 @@ for kind in ("ed25519", "rsa"):
     private.with_suffix(private.suffix + ".pub").chmod(0o644)
 
 authorized = Path("/etc/ssh/authorized_keys")
-if not authorized.exists() or not any(line.strip() and not line.lstrip().startswith("#") for line in authorized.read_text().splitlines()):
+if not authorized.exists() or not authorized_keys_configured(authorized):
     fail("no public keys are configured in /etc/ssh/authorized_keys")
 
 Path("/run/sshd").mkdir(parents=True, exist_ok=True)

@@ -52,7 +52,7 @@ ghcr.io/lucurlings/devctl-workspace:latest
 
 ## Setup helper
 
-`setup.sh hub` creates `/srv/devctl`, installs public keys, creates `hub.env`, and starts Herdr. `setup.sh workspace` validates its arguments, rejects duplicate configured SSH ports, creates the project directories and env file, starts Compose, waits for health, and prints URLs plus the SSH block.
+`setup.sh hub` creates `/srv/devctl`, installs public keys, creates `hub.env`, and starts Herdr. `setup.sh workspace` validates its arguments, rejects configured or currently listening SSH ports, creates the project directories and env file, starts Compose, waits for health, and prints URLs plus the SSH block.
 
 Authentication is also argument-driven:
 

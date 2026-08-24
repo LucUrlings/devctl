@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 DEPLOY_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 readonly DEPLOY_DIR
 readonly STATE_ROOT=/srv/devctl
+readonly PUBLIC_KEY_REGEX='(^|[[:space:]])(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh.com|sk-ecdsa-sha2-nistp256@openssh.com)[[:space:]][A-Za-z0-9+/=]+'
 
 usage() {
   cat <<'EOF'
@@ -47,7 +49,7 @@ validate_slug() {
 
 validate_repo() {
   local value=$1
-  [[ $value =~ ^https://[A-Za-z0-9.-]+/[^[:space:]@?#]+$ ]] || \
+  [[ $value =~ ^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/%+-]+$ ]] || \
     die "repository must be a credential-free HTTPS URL"
 }
 
@@ -60,7 +62,7 @@ validate_branch() {
 
 validate_integer() {
   local label=$1 value=$2 minimum=$3 maximum=$4
-  [[ $value =~ ^[0-9]+$ ]] || die "$label must be an integer"
+  [[ $value =~ ^[0-9]+$ && ${#value} -le 10 ]] || die "$label must be an integer"
   local number=$((10#$value))
   (( number >= minimum && number <= maximum )) || \
     die "$label must be between $minimum and $maximum"
@@ -72,19 +74,28 @@ validate_name() {
 }
 
 validate_domain() {
-  [[ $1 =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ && $1 != *..* ]] || \
-    die "BASE_DOMAIN is invalid"
+  local domain=$1 label
+  local -a labels
+  ((${#domain} <= 253)) || die "BASE_DOMAIN is invalid"
+  [[ $domain != .* && $domain != *. && $domain != *..* ]] || die "BASE_DOMAIN is invalid"
+  IFS=. read -r -a labels <<< "$domain"
+  ((${#labels[@]} >= 2)) || die "BASE_DOMAIN is invalid"
+  for label in "${labels[@]}"; do
+    ((${#label} <= 63)) || die "BASE_DOMAIN is invalid"
+    [[ $label =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$ ]] || \
+      die "BASE_DOMAIN is invalid"
+  done
 }
 
 validate_image() {
-  [[ $1 =~ ^[A-Za-z0-9._/@:-]+$ ]] || die "WORKSPACE_IMAGE contains unsupported characters"
+  [[ $1 =~ ^[A-Za-z0-9._/@:-]+$ ]] || die "container image contains unsupported characters"
 }
 
 ensure_hub_env() {
   if [[ ! -e $DEPLOY_DIR/hub.env ]]; then
     cp -- "$DEPLOY_DIR/hub.env.example" "$DEPLOY_DIR/hub.env"
-    chmod 0600 "$DEPLOY_DIR/hub.env"
   fi
+  chmod 0600 "$DEPLOY_DIR/hub.env"
 }
 
 wait_for_hub() {
@@ -103,12 +114,35 @@ wait_for_hub() {
   die "hub did not become healthy within 120 seconds"
 }
 
+wait_for_telegram() {
+  local container health
+  local -a compose=(docker compose --profile telegram \
+    --env-file "$DEPLOY_DIR/hub.env" -f "$DEPLOY_DIR/hub.compose.yml")
+  for _attempt in {1..60}; do
+    container=$("${compose[@]}" ps --all --quiet telegram)
+    if [[ -n $container ]]; then
+      health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container")
+      [[ $health == healthy ]] && return
+      [[ $health == unhealthy || $health == exited ]] && die "Telegram became $health; run Compose logs"
+    fi
+    sleep 2
+  done
+  die "Telegram did not become healthy within 120 seconds"
+}
+
+authorized_keys_configured() {
+  as_root awk -v pattern="$PUBLIC_KEY_REGEX" '
+    $0 !~ /^[[:space:]]*#/ && $0 ~ pattern { found = 1 }
+    END { exit !found }
+  ' "$STATE_ROOT/ssh/authorized_keys"
+}
+
 install_public_key() {
   local key_file=$1 line
   [[ -f $key_file && -s $key_file ]] || die "authorized key file is missing or empty"
   while IFS= read -r line || [[ -n $line ]]; do
-    [[ -z $line || $line == \#* ]] && continue
-    [[ $line =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521))[[:space:]] ]] || \
+    [[ -z ${line//[[:space:]]/} || $line =~ ^[[:space:]]*# ]] && continue
+    [[ $line =~ $PUBLIC_KEY_REGEX ]] || \
       die "--authorized-key must contain public SSH keys only"
     if ! as_root grep -Fqx -- "$line" "$STATE_ROOT/ssh/authorized_keys"; then
       printf '%s\n' "$line" | as_root tee -a "$STATE_ROOT/ssh/authorized_keys" >/dev/null
@@ -137,7 +171,8 @@ hub_command() {
   as_root chmod 0600 "$STATE_ROOT/ssh/authorized_keys"
   if [[ -n $authorized_key ]]; then
     install_public_key "$authorized_key"
-  elif ! as_root test -s "$STATE_ROOT/ssh/authorized_keys"; then
+  fi
+  if ! authorized_keys_configured; then
     die "provide --authorized-key PATH on the first run"
   fi
 
@@ -159,6 +194,15 @@ port_is_already_configured() {
     [[ $configured == "$wanted" ]] && return 0
   done
   return 1
+}
+
+port_is_listening() {
+  command -v ss >/dev/null 2>&1 || return 1
+  ss -H -ltn | awk -v wanted="$1" '
+    { address = $4; sub(/^.*:/, "", address) }
+    address == wanted { found = 1 }
+    END { exit !found }
+  '
 }
 
 wait_for_workspace() {
@@ -216,12 +260,13 @@ workspace_command() {
   [[ -z $cert_resolver ]] || validate_name TRAEFIK_CERT_RESOLVER "$cert_resolver"
   validate_image "$image"
   [[ -f $DEPLOY_DIR/hub.env ]] || die "run './setup.sh hub' first"
-  as_root test -s "$STATE_ROOT/ssh/authorized_keys" || die "run './setup.sh hub' with an authorized key first"
+  authorized_keys_configured || die "run './setup.sh hub' with an authorized key first"
 
   mkdir -p "$DEPLOY_DIR/projects"
   local env_file=$DEPLOY_DIR/projects/$name.env
   [[ ! -e $env_file ]] || die "$env_file already exists"
   port_is_already_configured "$ssh_port" && die "SSH port $ssh_port is already used by another project env file"
+  port_is_listening "$ssh_port" && die "SSH port $ssh_port is already listening on this server"
 
   local project_dir=$STATE_ROOT/projects/$name temporary
   as_root install -d -m 0755 "$project_dir"
@@ -263,6 +308,7 @@ EOF
 
 auth_command() {
   (($# == 1)) || die "auth requires github, codex, or claude"
+  as_root test -d "$STATE_ROOT/herdr" || die "run './setup.sh hub' first"
   ensure_hub_env
   require_compose
   local -a compose=(docker compose --env-file "$DEPLOY_DIR/hub.env" -f "$DEPLOY_DIR/hub.compose.yml")
@@ -288,6 +334,7 @@ telegram_command() {
   [[ $allowed_users =~ ^[0-9]+(,[0-9]+)*$ ]] || die "allowed users must be comma-separated numeric IDs"
   [[ $group_id =~ ^-100[0-9]+$ ]] || die "group ID must begin with -100"
   [[ -f $token_file && -s $token_file ]] || die "token file is missing or empty"
+  [[ $(stat -c '%a' -- "$token_file") == 600 ]] || die "token file must have mode 0600"
   [[ $(wc -l < "$token_file") -le 1 && $(<"$token_file") != *[[:space:]]* ]] || \
     die "token file must contain only the BotFather token"
   as_root test -d "$STATE_ROOT/herdr" || die "run './setup.sh hub' first"
@@ -296,6 +343,7 @@ telegram_command() {
   local hub_image
   hub_image=$(sed -n 's/^HUB_IMAGE=//p' "$DEPLOY_DIR/hub.env")
   [[ -n $hub_image ]] || hub_image=ghcr.io/lucurlings/devctl-hub:latest
+  validate_image "$hub_image"
   local temporary
   temporary=$(mktemp "$DEPLOY_DIR/.hub.env.XXXXXX")
   printf '%s\n' "HUB_IMAGE=$hub_image" "TELEGRAM_ALLOWED_USERS=$allowed_users" \
@@ -306,6 +354,7 @@ telegram_command() {
   require_compose
   docker compose --profile telegram --env-file "$DEPLOY_DIR/hub.env" \
     -f "$DEPLOY_DIR/hub.compose.yml" up -d
+  wait_for_telegram
   echo "Telegram configured for group $group_id. The bot token was not printed."
 }
 

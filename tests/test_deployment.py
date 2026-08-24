@@ -14,6 +14,15 @@ DEV_ENTER = (ROOT / "images/hub/rootfs/usr/local/bin/dev-enter").read_text(
 
 
 class DeploymentTests(unittest.TestCase):
+    def run_setup_function(self, command: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["bash", "-c", f"source deploy/setup.sh; {command}"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
     def test_setup_helper_is_argument_driven(self) -> None:
         helper = ROOT / "deploy/setup.sh"
         help_result = subprocess.run(
@@ -45,6 +54,31 @@ class DeploymentTests(unittest.TestCase):
         )
         self.assertEqual(invalid.returncode, 2)
         self.assertNotIn("token@", invalid.stderr)
+
+    def test_setup_helper_rejects_dotenv_and_numeric_edge_cases(self) -> None:
+        for command in (
+            "validate_repo 'https://github.com/owner/repo\"bad'",
+            "validate_domain 'example.com.'",
+            "validate_domain 'example..com'",
+            "validate_integer PORT 999999999999999999999 1 65535",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(self.run_setup_function(command).returncode, 2)
+
+        self.assertEqual(
+            self.run_setup_function(
+                "validate_repo 'https://github.com/owner/repo.git'; "
+                "validate_domain 'example.com'; validate_integer PORT 22000 1 65535"
+            ).returncode,
+            0,
+        )
+
+    def test_generated_env_files_are_ignored(self) -> None:
+        for path in ("deploy/hub.env", "deploy/projects/project.env"):
+            result = subprocess.run(
+                ["git", "check-ignore", "--quiet", path], cwd=ROOT, check=False
+            )
+            self.assertEqual(result.returncode, 0, path)
 
     def test_workspace_persists_ssh_identity_and_vscode_server(self) -> None:
         self.assertIn("/ssh-host-keys:/etc/ssh/devctl-host-keys", WORKSPACE)

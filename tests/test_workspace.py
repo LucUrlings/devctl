@@ -14,6 +14,17 @@ SPEC.loader.exec_module(workspace)
 
 
 class WorkspaceCloneTests(unittest.TestCase):
+    def test_authorized_keys_requires_a_public_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            key_file = Path(temporary) / "authorized_keys"
+            key_file.write_text("# ssh-ed25519 AAAA\nnot-a-key\n", encoding="utf-8")
+            self.assertFalse(workspace.authorized_keys_configured(key_file))
+            key_file.write_text(
+                'restrict,command="false" sk-ssh-ed25519@openssh.com QUJD comment\n',
+                encoding="utf-8",
+            )
+            self.assertTrue(workspace.authorized_keys_configured(key_file))
+
     def test_project_slug_is_strict(self) -> None:
         self.assertEqual(workspace.validate_slug("project-one"), "project-one")
         for unsafe in ("", "Upper", "../bad", "bad_name", "a" * 42):
@@ -109,6 +120,12 @@ class WorkspaceCloneTests(unittest.TestCase):
         with self.assertRaises(workspace.WorkspaceError):
             workspace.clone_command(
                 "https://github.com/owner/repo", Path("/workspace/project"), depth="0"
+            )
+        with self.assertRaises(workspace.WorkspaceError):
+            workspace.clone_command(
+                "https://github.com/owner/repo",
+                Path("/workspace/project"),
+                depth="9" * 10_000,
             )
 
 
