@@ -29,6 +29,7 @@ jobs:
           images/hub/rootfs/usr/local/bin/hub-healthcheck
           images/hub/rootfs/usr/local/bin/image-versions
           images/workspace/rootfs/usr/local/bin/image-versions
+          deploy/setup.sh
       - name: Run Hadolint
         run: |
           for dockerfile in images/hub/Dockerfile images/workspace/Dockerfile; do

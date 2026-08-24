@@ -1,6 +1,6 @@
 # Devctl
 
-Two Docker images and two Compose deployments: one permanent Herdr control plane and any number of persistent development workspaces. There is no host-side CLI, project registry, package installer, or automatic port allocator.
+Two Docker images and two Compose deployments: one permanent Herdr control plane and any number of persistent development workspaces. A small optional setup script turns arguments into env files and runs Compose; there is no installed CLI, project registry, package, or automatic port allocator.
 
 ## TL;DR
 
@@ -12,30 +12,25 @@ curl -fsSLO https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/hub.
 curl -fsSLO https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/workspace.compose.yml
 curl -fsSLO https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/workspace.env.example
 curl -fsSLO https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/workspace.docker-host.override.yml
+curl -fsSLO https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/setup.sh
+chmod +x setup.sh
 
-sudo install -d -m 0755 /srv/devctl/{herdr,herdr/run,ccgram,projects,ssh}
-sudo install -d -m 0700 /srv/devctl/{secrets,shared/codex,shared/claude,shared/gh}
-sudo touch /srv/devctl/ssh/authorized_keys
-sudo chmod 600 /srv/devctl/ssh/authorized_keys
-sudo editor /srv/devctl/ssh/authorized_keys  # paste public keys only
+./setup.sh hub --authorized-key ~/.ssh/authorized_keys
 
-cp hub.env.example hub.env
-chmod 600 hub.env
-docker compose --env-file hub.env -f hub.compose.yml up -d
+./setup.sh workspace \
+  --name <project> \
+  --repo <repo> \
+  --ssh-port <free-port-in-22000-22999> \
+  --base-domain <base-domain> \
+  --traefik-network <traefik-network> \
+  --auth-middleware <oauth-middleware>
 
-cp workspace.env.example projects/<project>.env
-editor projects/<project>.env  # set PROJECT_NAME, PROJECT_DIR, REPO_URL, SSH_PORT, domain and Traefik values
-chmod 600 projects/<project>.env
-sudo install -d -m 0755 /srv/devctl/projects/<project>
-sudo install -d -m 0700 /srv/devctl/projects/<project>/{repo,ssh-host-keys,vscode-server}
-docker compose --project-name devctl-<project> \
-  --env-file projects/<project>.env -f workspace.compose.yml up -d
-
-# Add the SSH config shown below, then connect and reconnect normally.
+# Paste the printed SSH block into ~/.ssh/config, then:
 ssh dev-<project>
 
 # Optional Telegram only:
-docker compose --profile telegram --env-file hub.env -f hub.compose.yml up -d
+./setup.sh telegram --allowed-users <user-id>[,<user-id>] \
+  --group-id <-100-supergroup-id> --token-file <bot-token-file>
 ```
 
 Use project names matching `[a-z0-9][a-z0-9-]{0,40}`. Choose a different free loopback SSH port in `22000-22999` for every project. Set `REPO_URL=<repo>` in each project env file.
@@ -55,7 +50,21 @@ ghcr.io/lucurlings/devctl-hub:latest
 ghcr.io/lucurlings/devctl-workspace:latest
 ```
 
-## Required configuration
+## Setup helper
+
+`setup.sh hub` creates `/srv/devctl`, installs public keys, creates `hub.env`, and starts Herdr. `setup.sh workspace` validates its arguments, rejects duplicate configured SSH ports, creates the project directories and env file, starts Compose, waits for health, and prints URLs plus the SSH block.
+
+Authentication is also argument-driven:
+
+```bash
+./setup.sh auth github
+./setup.sh auth codex
+./setup.sh auth claude
+```
+
+Run `./setup.sh help` for optional branch, clone depth, preview port, entrypoint, certificate resolver, and image arguments. The script is only a thin Compose helper: it has no registry or hidden state. You can always edit the env files and run Compose directly.
+
+## Generated configuration
 
 Edit `projects/<project>.env`:
 
@@ -106,15 +115,12 @@ The checkout, SSH host keys, and `/home/developer/.vscode-server` are bind-mount
 
 ## Shared authentication
 
-Authenticate once inside the hub; every trusted workspace receives the same host directories:
+Authenticate once through the helper; every trusted workspace receives the same host directories:
 
 ```bash
-docker compose --env-file hub.env -f hub.compose.yml exec \
-  --user developer -e HOME=/home/developer herdr gh auth login --hostname github.com --git-protocol https --web
-docker compose --env-file hub.env -f hub.compose.yml exec \
-  --user developer -e HOME=/home/developer herdr codex login --device-auth
-docker compose --env-file hub.env -f hub.compose.yml exec \
-  --user developer -e HOME=/home/developer herdr claude auth login
+./setup.sh auth github
+./setup.sh auth codex
+./setup.sh auth claude
 ```
 
 GitHub state persists in `/srv/devctl/shared/gh`, Codex in `/srv/devctl/shared/codex`, and Claude in `/srv/devctl/shared/claude`. All trusted workspaces can access these credentials.
@@ -140,13 +146,15 @@ To enable it:
 3. Add the bot to the group with permission to send messages and manage topics.
 4. Obtain the numeric Telegram user IDs allowed to use it.
 5. Obtain the supergroup ID beginning with `-100`.
-6. Put only the bot token in `/srv/devctl/secrets/telegram-bot-token` and run `sudo chmod 600` on it.
-7. Put `TELEGRAM_ALLOWED_USERS=<id>[,<id>...]` and `TELEGRAM_GROUP_ID=-100...` in protected `hub.env`.
-8. Start it:
+6. Put only the BotFather token in a temporary local file and run `chmod 600` on it.
+7. Run the helper with that file, the allowlist, and the group ID:
 
 ```bash
-docker compose --profile telegram --env-file hub.env -f hub.compose.yml up -d
+./setup.sh telegram --allowed-users <user-id>[,<user-id>] \
+  --group-id <-100-supergroup-id> --token-file <bot-token-file>
 ```
+
+The helper copies the token to `/srv/devctl/secrets/telegram-bot-token` with mode `0600`, updates the protected `hub.env`, and starts the profile. You may then delete the input file.
 
 CCGram uses `CCGRAM_MULTIPLEXER=herdr` and Telegram long polling. It opens no inbound port. See [docs/telegram.md](docs/telegram.md).
 

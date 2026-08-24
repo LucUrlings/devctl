@@ -14,6 +14,38 @@ DEV_ENTER = (ROOT / "images/hub/rootfs/usr/local/bin/dev-enter").read_text(
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_setup_helper_is_argument_driven(self) -> None:
+        helper = ROOT / "deploy/setup.sh"
+        help_result = subprocess.run(
+            [str(helper), "help"], check=False, capture_output=True, text=True
+        )
+        self.assertEqual(help_result.returncode, 0)
+        self.assertIn("workspace --name NAME --repo URL", help_result.stdout)
+        invalid = subprocess.run(
+            [
+                str(helper),
+                "workspace",
+                "--name",
+                "project",
+                "--repo",
+                "https://token@github.com/owner/repo",
+                "--ssh-port",
+                "22000",
+                "--base-domain",
+                "example.test",
+                "--traefik-network",
+                "proxy",
+                "--auth-middleware",
+                "oauth@docker",
+                "--no-start",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(invalid.returncode, 2)
+        self.assertNotIn("token@", invalid.stderr)
+
     def test_workspace_persists_ssh_identity_and_vscode_server(self) -> None:
         self.assertIn("/ssh-host-keys:/etc/ssh/devctl-host-keys", WORKSPACE)
         self.assertIn("/vscode-server:/home/developer/.vscode-server", WORKSPACE)

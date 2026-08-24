@@ -11,7 +11,8 @@ lint:
 		images/hub/rootfs/usr/local/bin/hub-entrypoint \
 		images/hub/rootfs/usr/local/bin/hub-healthcheck \
 		images/hub/rootfs/usr/local/bin/image-versions \
-		images/workspace/rootfs/usr/local/bin/image-versions
+		images/workspace/rootfs/usr/local/bin/image-versions \
+		deploy/setup.sh
 
 compose-check:
 	./scripts/validate-compose.sh
