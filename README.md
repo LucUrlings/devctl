@@ -7,7 +7,7 @@ Docker workspaces with code-server, VS Code SSH, Herdr, Codex, Claude, and optio
 Run on the Docker server. Download the setup script first:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/setup.sh
+curl -fsSL "https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/setup.sh?$(date +%s)" -o setup.sh
 chmod +x setup.sh
 ```
 
