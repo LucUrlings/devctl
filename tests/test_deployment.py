@@ -27,6 +27,11 @@ class DeploymentTests(unittest.TestCase):
         self.assertNotIn("./setup.sh workspace", result.stdout)
         self.assertNotIn("./setup.sh hub", result.stdout)
 
+    def test_setup_contains_ssh_output(self) -> None:
+        helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        self.assertIn("Host dev-$name", helper)
+        self.assertIn("ProxyJump <server-alias>", helper)
+
     def test_workspace_persistence_and_loopback_ssh(self) -> None:
         self.assertIn("/ssh-host-keys:/etc/ssh/devctl-host-keys", WORKSPACE)
         self.assertIn("/vscode-server:/home/developer/.vscode-server", WORKSPACE)

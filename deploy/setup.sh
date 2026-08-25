@@ -181,7 +181,19 @@ create_cmd() {
   docker compose --project-name "devctl-$name" --env-file "$file" -f "$HERE/workspace.compose.yml" up -d
   wait_healthy "devctl-$name" "$file" "$HERE/workspace.compose.yml" workspace
   herdr_create "$name"
-  printf '%s\n' "Created $name" "Code: https://$name.code.$BASE_DOMAIN" "Preview: https://$name.dev.$BASE_DOMAIN"
+  cat <<EOF
+Created $name
+Code: https://$name.code.$BASE_DOMAIN
+Preview: https://$name.dev.$BASE_DOMAIN
+
+Add this block to your laptop's ~/.ssh/config:
+Host dev-$name
+    HostName 127.0.0.1
+    Port $port
+    User developer
+    ProxyJump <server-alias>
+    IdentityFile ~/.ssh/id_ed25519
+EOF
 }
 
 login_cmd() {
