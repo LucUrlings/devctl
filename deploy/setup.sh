@@ -25,6 +25,12 @@ ensure_bundle() {
   done
 }
 
+prepare_projects_dir() {
+  [[ ! -e $PROJECTS || -d $PROJECTS ]] || die "$PROJECTS is not a directory"
+  [[ ! -d $PROJECTS || -w $PROJECTS ]] || root chown "$(id -u):$(id -g)" "$PROJECTS"
+  install -d -m 0700 "$PROJECTS"
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -107,6 +113,7 @@ install_cmd() {
   [[ $network =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid Traefik network"
   [[ $middleware =~ ^[A-Za-z0-9_.@:-]+$ ]] || die "invalid OAuth middleware"
   ensure_bundle
+  prepare_projects_dir
   root install -d -m 0755 "$STATE/herdr" "$STATE/herdr/run" "$STATE/ccgram" "$STATE/projects"
   root install -d -m 0700 "$STATE/secrets" "$STATE/shared/codex" "$STATE/shared/claude" "$STATE/shared/gh"
   [[ -f $HERE/hub.env ]] || cp -- "$HERE/hub.env.example" "$HERE/hub.env"
@@ -134,7 +141,7 @@ port_free() {
 }
 
 next_port() {
-  root install -d -m 0700 "$PROJECTS"
+  prepare_projects_dir
   exec 9>"$PROJECTS/.lock"
   flock -x 9 || die "flock is required"
   for port in $(seq 22000 22999); do port_free "$port" && { echo "$port"; flock -u 9; exec 9>&-; return; }; done
