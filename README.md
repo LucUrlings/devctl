@@ -4,7 +4,14 @@ Docker workspaces with code-server, VS Code SSH, Herdr, Codex, Claude, and optio
 
 ## Quick start
 
-Run on the Docker server:
+Run on the Docker server. Download the setup script first:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/setup.sh
+chmod +x setup.sh
+```
+
+Then run:
 
 ```bash
 ./setup.sh install --agent codex \
