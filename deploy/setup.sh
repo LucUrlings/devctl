@@ -6,6 +6,7 @@ HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 STATE=/srv/devctl
 CONFIG=$HERE/devctl.env
 PROJECTS=$HERE/projects
+RAW=https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy
 
 die() { echo "setup.sh: $*" >&2; exit 2; }
 root() {
@@ -16,6 +17,13 @@ root() {
   fi
 }
 compose_hub() { docker compose --env-file "$HERE/hub.env" -f "$HERE/hub.compose.yml" "$@"; }
+
+ensure_bundle() {
+  local file
+  for file in hub.compose.yml hub.env.example workspace.compose.yml workspace.env.example workspace.docker-host.override.yml; do
+    [[ -f $HERE/$file ]] || curl -fsSL "$RAW/$file" -o "$HERE/$file" || die "could not download $file"
+  done
+}
 
 usage() {
   cat <<'EOF'
@@ -98,6 +106,7 @@ install_cmd() {
   valid_domain "$domain" || die "invalid base domain"
   [[ $network =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid Traefik network"
   [[ $middleware =~ ^[A-Za-z0-9_.@:-]+$ ]] || die "invalid OAuth middleware"
+  ensure_bundle
   root install -d -m 0755 "$STATE/herdr" "$STATE/herdr/run" "$STATE/ccgram" "$STATE/projects"
   root install -d -m 0700 "$STATE/secrets" "$STATE/shared/codex" "$STATE/shared/claude" "$STATE/shared/gh"
   [[ -f $HERE/hub.env ]] || cp -- "$HERE/hub.env.example" "$HERE/hub.env"
@@ -147,6 +156,7 @@ herdr_create() {
 }
 
 create_cmd() {
+  ensure_bundle
   load_config
   local repo=$1 name='' branch='' depth='' preview=3000 port='' file project_dir
   shift
@@ -208,6 +218,7 @@ login_cmd() {
 list_cmd() { for file in "$PROJECTS"/*.env; do [[ -e $file ]] || continue; sed -n 's/^PROJECT_NAME=//p' "$file"; done; }
 
 telegram_cmd() {
+  ensure_bundle
   local token='' users='' group=''
   while (($#)); do case $1 in --token-file) token=${2:-}; shift 2;; --allowed-users) users=${2:-}; shift 2;; --group-id) group=${2:-}; shift 2;; *) die "unknown telegram option: $1";; esac; done
   [[ $users =~ ^[0-9]+(,[0-9]+)*$ && $group =~ ^-100[0-9]+$ && -f $token ]] || die "invalid Telegram settings"
