@@ -36,6 +36,7 @@ usage() {
 Usage:
   ./setup.sh install --agent codex|claude|none [global options]
   ./setup.sh create <repo> [--name NAME] [--branch BRANCH] [--depth N]
+                          [--preview-port PORT] [--ssh-port PORT]
   ./setup.sh list
   ./setup.sh telegram --token-file PATH --allowed-users IDS --group-id ID
   ./setup.sh login github|codex|claude
@@ -148,18 +149,45 @@ next_port() {
   flock -u 9; exec 9>&-; die "no SSH ports remain in 22000-22999"
 }
 
+wait_pane_shell() {
+  local pane=$1 info process
+  for _ in {1..30}; do
+    info=$(compose_hub exec -T herdr herdr pane process-info --pane "$pane" 2>/dev/null || true)
+    process=$(printf '%s\n' "$info" | compose_hub exec -T herdr jq -r \
+      '.result.process_info.foreground_processes[0].name // empty')
+    [[ $process == sh || $process == bash || $process == zsh || $process == fish ]] && return
+    sleep 1
+  done
+  die "Herdr pane $pane did not become ready"
+}
+
+wait_agent() {
+  local pane=$1 agents found
+  for _ in {1..30}; do
+    agents=$(compose_hub exec -T herdr herdr agent list 2>/dev/null || true)
+    found=$(printf '%s\n' "$agents" | compose_hub exec -T herdr jq -r --arg pane "$pane" \
+      'any(.result.agents[]?; .pane_id == $pane)')
+    [[ $found == true ]] && return
+    sleep 1
+  done
+  die "agent did not start in Herdr pane $pane; inspect it with 'herdr pane read $pane'"
+}
+
 herdr_create() {
   local project=$1 agent=${DEFAULT_AGENT:-none} result workspace pane tab tab_pane
   result=$(compose_hub exec -T herdr herdr workspace create --cwd /srv/devctl/herdr --label "$project" --no-focus)
   workspace=$(printf '%s\n' "$result" | compose_hub exec -T herdr jq -r '.result.workspace.workspace_id')
   pane=$(printf '%s\n' "$result" | compose_hub exec -T herdr jq -r '.result.root_pane.pane_id')
   [[ $workspace != null && $pane != null ]] || die "Herdr workspace creation failed"
+  wait_pane_shell "$pane"
   compose_hub exec -T herdr herdr pane run "$pane" "dev-enter $project shell" >/dev/null
   [[ $agent == none ]] && return
   tab=$(compose_hub exec -T herdr herdr tab create --workspace "$workspace" --cwd /srv/devctl/herdr --label "$agent" --no-focus)
   tab_pane=$(printf '%s\n' "$tab" | compose_hub exec -T herdr jq -r '.result.root_pane.pane_id')
   [[ $tab_pane != null ]] || die "Herdr tab creation failed"
+  wait_pane_shell "$tab_pane"
   compose_hub exec -T herdr herdr pane run "$tab_pane" "HERDR_AGENT=$agent dev-enter $project $agent" >/dev/null
+  wait_agent "$tab_pane"
 }
 
 create_cmd() {

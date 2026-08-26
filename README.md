@@ -23,6 +23,12 @@ Then run:
 
 The first command starts the hub. The second safely clones a repository, starts its workspace, creates its Herdr tabs, starts the agent, and prints URLs plus SSH config. Repeat `./setup.sh create <repo>` for more projects.
 
+The preview route uses port `3000` by default. Pass the port your frontend listens on when it differs:
+
+```bash
+./setup.sh create <repo> --preview-port <port>
+```
+
 Open the printed code-server URL on your phone. Add the printed SSH block to your laptop’s `~/.ssh/config`, then use `ssh dev-<project>` or VS Code Remote SSH and open `/workspace/project`.
 
 ## How it works
@@ -43,7 +49,7 @@ Credentials are shared from `/srv/devctl/shared`; use this only with trusted wor
 
 ## Telegram (optional)
 
-CCGram connects Telegram to the existing Herdr server. Create a BotFather bot, enable forum topics in a private supergroup, add the bot, and collect allowed numeric user IDs plus the `-100...` group ID:
+CCGram connects Telegram to the existing Herdr server. Create a BotFather bot, enable forum topics in a private supergroup, and add the bot as an administrator with **Manage Topics**. Disable the bot's Group Privacy in BotFather, then collect allowed numeric user IDs plus the `-100...` group ID:
 
 ```bash
 ./setup.sh telegram --token-file <bot-token-file> \
@@ -51,6 +57,8 @@ CCGram connects Telegram to the existing Herdr server. Create a BotFather bot, e
 ```
 
 Keep the token file mode `0600`. Telegram uses long polling and an explicit allowlist.
+
+CCGram automatically creates one topic per active Herdr agent. Codex or Claude may show first-run update, repository-trust, or hook-trust prompts before the topic becomes ready; review those prompts rather than automatically accepting them.
 
 ## Docker socket opt-in
 
