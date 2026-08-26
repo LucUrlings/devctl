@@ -72,8 +72,14 @@ The checkout is mounted at the same `/srv/devctl/projects/<project>/repo` path o
 
 ```bash
 ./setup.sh list
+./setup.sh update              # Update hub and every workspace
+./setup.sh update <project>    # Update hub and one workspace
+./setup.sh teardown <project>  # Remove one workspace's containers
+./setup.sh teardown --all      # Remove all containers, including the hub
 docker compose --env-file hub.env -f hub.compose.yml logs -f
 ```
+
+Update and teardown preserve repositories, shared credentials, SSH host keys, VS Code state, project env files, Herdr state, and CCGram state. Recreating a workspace ends processes currently running inside its old container; restart that project’s Herdr agent pane afterward.
 
 Back up `/srv/devctl/projects`, `/srv/devctl/shared`, `/srv/devctl/herdr`, `/srv/devctl/ccgram`, `/srv/devctl/ssh`, and `/srv/devctl/secrets`.
 

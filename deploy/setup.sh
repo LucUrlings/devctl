@@ -44,6 +44,8 @@ Usage:
   ./setup.sh install --agent codex|claude|none [global options]
   ./setup.sh create <repo> [--name NAME] [--branch BRANCH] [--depth N]
                           [--preview-port PORT] [--ssh-port PORT]
+  ./setup.sh update [PROJECT]
+  ./setup.sh teardown PROJECT|--all
   ./setup.sh list
   ./setup.sh telegram --token-file PATH --allowed-users IDS --group-id ID
   ./setup.sh login github|codex|claude
@@ -161,6 +163,21 @@ next_port() {
   die "no SSH ports remain in 22000-22999"
 }
 
+project_name_from_file() {
+  local file=$1 name
+  name=$(sed -n 's/^PROJECT_NAME=//p' "$file")
+  valid_name "$name" || die "invalid PROJECT_NAME in $file"
+  [[ $file == "$PROJECTS/$name.env" ]] || die "project env filename does not match PROJECT_NAME: $file"
+  printf '%s\n' "$name"
+}
+
+workspace_compose() {
+  local name=$1 file=$2
+  shift 2
+  docker compose --project-name "devctl-$name" --env-file "$file" \
+    -f "$HERE/workspace.compose.yml" "$@"
+}
+
 wait_pane_shell() {
   local pane=$1 info process
   for _ in {1..30}; do
@@ -267,6 +284,66 @@ Host dev-$name
 EOF
 }
 
+update_cmd() {
+  (($# <= 1)) || die "update accepts at most one project"
+  ensure_bundle true
+  [[ -f $HERE/hub.env ]] || die "run './setup.sh install' first"
+  prepare_projects_dir
+
+  local -a hub_profile=() files=()
+  local file name
+  if [[ -n $(compose_hub --profile telegram ps --all --quiet telegram 2>/dev/null) ]]; then
+    hub_profile=(--profile telegram)
+  fi
+  compose_hub "${hub_profile[@]}" up -d --pull always --force-recreate --remove-orphans
+  wait_healthy devctl-hub "$HERE/hub.env" "$HERE/hub.compose.yml" herdr
+
+  if (($# == 1)); then
+    valid_name "$1" || die "invalid project name"
+    [[ -f $PROJECTS/$1.env ]] || die "project not found: $1"
+    files=("$PROJECTS/$1.env")
+  else
+    shopt -s nullglob
+    files=("$PROJECTS"/*.env)
+    shopt -u nullglob
+  fi
+  for file in "${files[@]}"; do
+    name=$(project_name_from_file "$file")
+    workspace_compose "$name" "$file" up -d --pull always --force-recreate --remove-orphans
+    wait_healthy "devctl-$name" "$file" "$HERE/workspace.compose.yml" workspace
+  done
+  echo "Updated hub and ${#files[@]} workspace(s). Persistent data was preserved."
+}
+
+teardown_cmd() {
+  (($# == 1)) || die "teardown requires a project name or --all"
+  [[ -f $HERE/workspace.compose.yml ]] || die "workspace.compose.yml is missing"
+  prepare_projects_dir
+
+  local file name
+  if [[ $1 == --all ]]; then
+    local -a files=()
+    shopt -s nullglob
+    files=("$PROJECTS"/*.env)
+    shopt -u nullglob
+    for file in "${files[@]}"; do
+      name=$(project_name_from_file "$file")
+      workspace_compose "$name" "$file" down --remove-orphans
+    done
+    [[ -f $HERE/hub.env && -f $HERE/hub.compose.yml ]] && \
+      compose_hub --profile telegram down --remove-orphans
+    echo "Tore down hub and ${#files[@]} workspace(s). Persistent data and config were preserved."
+    return
+  fi
+
+  valid_name "$1" || die "invalid project name"
+  file=$PROJECTS/$1.env
+  [[ -f $file ]] || die "project not found: $1"
+  name=$(project_name_from_file "$file")
+  workspace_compose "$name" "$file" down --remove-orphans
+  echo "Tore down $name. Its repository, credentials, SSH keys, and config were preserved."
+}
+
 login_cmd() {
   case ${1:-} in
     github) compose_hub exec --user developer -e HOME=/home/developer herdr gh auth login --hostname github.com --git-protocol https --web;;
@@ -294,6 +371,8 @@ main() {
   case ${1:-} in
     install) shift; install_cmd "$@";;
     create) (($# >= 2)) || die "create requires a repository URL"; shift; create_cmd "$@";;
+    update) shift; update_cmd "$@";;
+    teardown) shift; teardown_cmd "$@";;
     list) list_cmd;;
     telegram) shift; telegram_cmd "$@";;
     login) shift; login_cmd "$@";;

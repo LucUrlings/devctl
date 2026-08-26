@@ -26,6 +26,8 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("./setup.sh install", result.stdout)
         self.assertIn("./setup.sh create <repo>", result.stdout)
+        self.assertIn("./setup.sh update [PROJECT]", result.stdout)
+        self.assertIn("./setup.sh teardown PROJECT|--all", result.stdout)
         self.assertIn("./setup.sh list", result.stdout)
         self.assertNotIn("./setup.sh workspace", result.stdout)
         self.assertNotIn("./setup.sh hub", result.stdout)
@@ -34,6 +36,16 @@ class DeploymentTests(unittest.TestCase):
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
         self.assertIn("Host dev-$name", helper)
         self.assertIn("ProxyJump <server-alias>", helper)
+
+    def test_update_and_teardown_preserve_project_data(self) -> None:
+        helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        self.assertIn(
+            'workspace_compose "$name" "$file" up -d --pull always '
+            "--force-recreate --remove-orphans",
+            helper,
+        )
+        self.assertIn('workspace_compose "$name" "$file" down --remove-orphans', helper)
+        self.assertNotIn("rm -rf", helper)
 
     def test_setup_waits_for_herdr_panes_and_agent(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
