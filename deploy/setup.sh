@@ -19,9 +19,16 @@ root() {
 compose_hub() { docker compose --env-file "$HERE/hub.env" -f "$HERE/hub.compose.yml" "$@"; }
 
 ensure_bundle() {
-  local file
-  for file in hub.compose.yml hub.env.example workspace.compose.yml workspace.env.example workspace.docker-host.override.yml; do
-    [[ -f $HERE/$file ]] || curl -fsSL "$RAW/$file" -o "$HERE/$file" || die "could not download $file"
+  local refresh=${1:-false} file temporary
+  for file in hub.compose.yml hub.env.example workspace.compose.yml workspace.env.example; do
+    if [[ $refresh == true || ! -f $HERE/$file ]]; then
+      temporary=$HERE/.$file.$$
+      curl -fsSL "$RAW/$file" -o "$temporary" || {
+        rm -f -- "$temporary"
+        die "could not download $file"
+      }
+      mv -- "$temporary" "$HERE/$file"
+    fi
   done
 }
 
@@ -113,10 +120,15 @@ install_cmd() {
   valid_domain "$domain" || die "invalid base domain"
   [[ $network =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid Traefik network"
   [[ $middleware =~ ^[A-Za-z0-9_.@:-]+$ ]] || die "invalid OAuth middleware"
-  ensure_bundle
+  ensure_bundle true
   prepare_projects_dir
+  [[ $entrypoint =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid Traefik entrypoint"
+  [[ -z $resolver || $resolver =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid certificate resolver"
   root install -d -m 0755 "$STATE/herdr" "$STATE/herdr/run" "$STATE/ccgram" "$STATE/projects"
   root install -d -m 0700 "$STATE/secrets" "$STATE/shared/codex" "$STATE/shared/claude" "$STATE/shared/gh"
+  root install -d -m 0755 "$STATE/ssh"
+  root touch "$STATE/ssh/authorized_keys"
+  root chmod 0600 "$STATE/ssh/authorized_keys"
   [[ -f $HERE/hub.env ]] || cp -- "$HERE/hub.env.example" "$HERE/hub.env"
   chmod 0600 "$HERE/hub.env"
   if [[ -n $key ]]; then install_key "$key"; elif [[ -f $HOME/.ssh/authorized_keys ]]; then install_key "$HOME/.ssh/authorized_keys"; fi
@@ -138,15 +150,15 @@ port_free() {
     configured=$(sed -n 's/^SSH_PORT=//p' "$file")
     [[ $configured == "$port" ]] && return 1
   done
-  command -v ss >/dev/null 2>&1 && ss -H -ltn | awk -v p="$port" '{ x=$4; sub(/^.*:/,"",x); if (x==p) found=1 } END { exit found }'
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltn | awk -v p="$port" '{ x=$4; sub(/^.*:/,"",x); if (x==p) found=1 } END { exit found }'
+  fi
 }
 
 next_port() {
-  prepare_projects_dir
-  exec 9>"$PROJECTS/.lock"
-  flock -x 9 || die "flock is required"
-  for port in $(seq 22000 22999); do port_free "$port" && { echo "$port"; flock -u 9; exec 9>&-; return; }; done
-  flock -u 9; exec 9>&-; die "no SSH ports remain in 22000-22999"
+  local port
+  for port in $(seq 22000 22999); do port_free "$port" && { echo "$port"; return; }; done
+  die "no SSH ports remain in 22000-22999"
 }
 
 wait_pane_shell() {
@@ -165,6 +177,8 @@ wait_agent() {
   local pane=$1 agents found
   for _ in {1..30}; do
     agents=$(compose_hub exec -T herdr herdr agent list 2>/dev/null || true)
+    # $pane belongs to jq, not the shell.
+    # shellcheck disable=SC2016
     found=$(printf '%s\n' "$agents" | compose_hub exec -T herdr jq -r --arg pane "$pane" \
       'any(.result.agents[]?; .pane_id == $pane)')
     [[ $found == true ]] && return
@@ -210,10 +224,19 @@ create_cmd() {
   [[ -z $depth ]] || valid_num "$depth" 1 2147483647 || die "invalid clone depth"
   [[ -n $name ]] || name=${repo##*/}; name=${name%.git}; name=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/^-*//; s/-*$//; s/\(.........................................\).*/\1/')
   valid_name "$name" || die "could not derive a valid project name; use --name"
-  [[ -z $port ]] && port=$(next_port)
-  valid_num "$port" 22000 22999 || die "SSH port must be 22000-22999"
   valid_num "$preview" 1 65535 || die "preview port is invalid"
-  file=$PROJECTS/$name.env; [[ ! -e $file ]] || die "project already exists: $name"
+  prepare_projects_dir
+  command -v flock >/dev/null 2>&1 || die "flock is required"
+  exec 9>"$PROJECTS/.lock"
+  flock -x 9
+  file=$PROJECTS/$name.env
+  [[ ! -e $file ]] || die "project already exists: $name"
+  if [[ -z $port ]]; then
+    port=$(next_port)
+  else
+    valid_num "$port" 22000 22999 || die "SSH port must be 22000-22999"
+    port_free "$port" || die "SSH port $port is already allocated or in use"
+  fi
   project_dir=$STATE/projects/$name
   root install -d -m 0755 "$project_dir"
   root install -d -m 0700 "$project_dir/repo" "$project_dir/ssh-host-keys" "$project_dir/vscode-server"
@@ -221,8 +244,11 @@ create_cmd() {
     "SSH_PORT=$port" "PREVIEW_PORT=$preview" "BASE_DOMAIN=$BASE_DOMAIN" "TRAEFIK_NETWORK=$TRAEFIK_NETWORK" \
     "TRAEFIK_ENTRYPOINT=$TRAEFIK_ENTRYPOINT" "TRAEFIK_AUTH_MIDDLEWARE=$TRAEFIK_AUTH_MIDDLEWARE" \
     "TRAEFIK_CERT_RESOLVER=$TRAEFIK_CERT_RESOLVER" "WORKSPACE_IMAGE=ghcr.io/lucurlings/devctl-workspace:latest" \
-    'WORKSPACE_CPUS=4' 'WORKSPACE_MEMORY=8G' > "$file"
-  chmod 0600 "$file"
+    'WORKSPACE_CPUS=4' 'WORKSPACE_MEMORY=8G' > "$file.tmp.$$"
+  chmod 0600 "$file.tmp.$$"
+  mv -- "$file.tmp.$$" "$file"
+  flock -u 9
+  exec 9>&-
   docker compose --project-name "devctl-$name" --env-file "$file" -f "$HERE/workspace.compose.yml" up -d
   wait_healthy "devctl-$name" "$file" "$HERE/workspace.compose.yml" workspace
   herdr_create "$name"
@@ -258,6 +284,7 @@ telegram_cmd() {
   while (($#)); do case $1 in --token-file) token=${2:-}; shift 2;; --allowed-users) users=${2:-}; shift 2;; --group-id) group=${2:-}; shift 2;; *) die "unknown telegram option: $1";; esac; done
   [[ $users =~ ^[0-9]+(,[0-9]+)*$ && $group =~ ^-100[0-9]+$ && -f $token ]] || die "invalid Telegram settings"
   [[ $(stat -c '%a' "$token") == 600 ]] || die "token file must have mode 0600"
+  [[ -f $HERE/hub.env ]] || die "run './setup.sh install' first"
   sed -i.bak -e "s/^TELEGRAM_ALLOWED_USERS=.*/TELEGRAM_ALLOWED_USERS=$users/" -e "s/^TELEGRAM_GROUP_ID=.*/TELEGRAM_GROUP_ID=$group/" "$HERE/hub.env"; rm -f "$HERE/hub.env.bak"
   root install -m 0600 "$token" "$STATE/secrets/telegram-bot-token"
   compose_hub --profile telegram up -d

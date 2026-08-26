@@ -17,6 +17,7 @@ class WorkspaceCloneTests(unittest.TestCase):
     def test_authorized_keys_requires_a_public_key(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             key_file = Path(temporary) / "authorized_keys"
+            self.assertFalse(workspace.authorized_keys_configured(Path(temporary)))
             key_file.write_text("# ssh-ed25519 AAAA\nnot-a-key\n", encoding="utf-8")
             self.assertFalse(workspace.authorized_keys_configured(key_file))
             key_file.write_text(

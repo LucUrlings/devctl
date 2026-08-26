@@ -24,12 +24,13 @@ def stop(signum: int, _frame: object) -> None:
 signal.signal(signal.SIGTERM, stop)
 signal.signal(signal.SIGINT, stop)
 environment = os.environ.copy()
+workspace = environment.get("WORKSPACE_PATH", "/workspace/project")
 commands = [
     ["/usr/sbin/sshd", "-D", "-e"],
     [
         "runuser", "--user", "developer", "--", "env", "HOME=/home/developer", "code-server",
         "--bind-addr", "0.0.0.0:8080", "--auth", "none", "--disable-telemetry",
-        "/workspace/project",
+        workspace,
     ],
 ]
 for command in commands:

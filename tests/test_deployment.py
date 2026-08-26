@@ -10,6 +10,9 @@ HUB = (ROOT / "deploy/hub.compose.yml").read_text(encoding="utf-8")
 DEV_ENTER = (ROOT / "images/hub/rootfs/usr/local/bin/dev-enter").read_text(
     encoding="utf-8"
 )
+WORKSPACE_ENTRYPOINT = (
+    ROOT / "images/workspace/rootfs/usr/local/bin/workspace-entrypoint"
+).read_text(encoding="utf-8")
 
 
 class DeploymentTests(unittest.TestCase):
@@ -38,7 +41,16 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('wait_pane_shell "$tab_pane"', helper)
         self.assertIn('wait_agent "$tab_pane"', helper)
 
+    def test_setup_validates_generated_shell_config_values(self) -> None:
+        helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        self.assertIn('invalid Traefik entrypoint', helper)
+        self.assertIn('invalid certificate resolver', helper)
+
+    def test_docker_socket_grants_developer_group_access(self) -> None:
+        self.assertIn('grant_docker_socket_access("developer")', WORKSPACE_ENTRYPOINT)
+
     def test_workspace_persistence_and_loopback_ssh(self) -> None:
+        self.assertIn("/repo:${PROJECT_DIR:?set PROJECT_DIR}/repo", WORKSPACE)
         self.assertIn("/ssh-host-keys:/etc/ssh/devctl-host-keys", WORKSPACE)
         self.assertIn("/vscode-server:/home/developer/.vscode-server", WORKSPACE)
         self.assertIn('"127.0.0.1:${SSH_PORT:?set SSH_PORT}:22"', WORKSPACE)
@@ -56,12 +68,15 @@ class DeploymentTests(unittest.TestCase):
             self.assertIn(f"{prefix}.tls=true", WORKSPACE)
             self.assertIn(f"{prefix}.tls.certresolver=${{TRAEFIK_CERT_RESOLVER:-}}", WORKSPACE)
 
-    def test_workspace_has_no_default_socket_or_herdr_state(self) -> None:
-        self.assertNotIn("/var/run/docker.sock", WORKSPACE)
+    def test_workspace_has_socket_but_no_herdr_state(self) -> None:
+        self.assertIn("/var/run/docker.sock:/var/run/docker.sock", WORKSPACE)
         self.assertIn("/srv/devctl/herdr/run:/run/herdr:ro", WORKSPACE)
         self.assertNotIn("/srv/devctl/herdr:/srv/devctl/herdr", WORKSPACE)
-        override = (ROOT / "deploy/workspace.docker-host.override.yml").read_text(encoding="utf-8")
-        self.assertIn("/var/run/docker.sock:/var/run/docker.sock", override)
+
+    def test_workspace_exposes_routes_to_agents(self) -> None:
+        self.assertIn("HOME: /home/developer", WORKSPACE)
+        self.assertIn("DEVCTL_CODE_URL: https://${PROJECT_NAME}.code.${BASE_DOMAIN:?set BASE_DOMAIN}", WORKSPACE)
+        self.assertIn("DEVCTL_PREVIEW_URL: https://${PROJECT_NAME}.dev.${BASE_DOMAIN:?set BASE_DOMAIN}", WORKSPACE)
 
     def test_telegram_is_optional(self) -> None:
         self.assertIn('profiles: ["telegram"]', HUB)
@@ -79,7 +94,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("invalid project slug", result.stderr)
         self.assertIn("--filter label=devctl.managed=true", DEV_ENTER)
         self.assertIn('label=devctl.project=$slug', DEV_ENTER)
-        self.assertIn("--user developer --workdir /workspace/project", DEV_ENTER)
+        self.assertIn('--user developer --workdir "/srv/devctl/projects/$slug/repo"', DEV_ENTER)
 
     def test_generated_env_files_are_ignored(self) -> None:
         for path in ("deploy/hub.env", "deploy/devctl.env", "deploy/projects/project.env", "deploy/projects/.lock"):

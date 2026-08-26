@@ -78,6 +78,8 @@ def validate_ref(value: str) -> str:
 
 def authorized_keys_configured(path: Path) -> bool:
     """Accept at least one structurally valid public-key line, including key options."""
+    if not path.is_file():
+        return False
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):

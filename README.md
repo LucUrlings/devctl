@@ -33,9 +33,11 @@ Open the printed code-server URL on your phone. Add the printed SSH block to you
 
 ## How it works
 
-One hub runs the only Herdr server and optional CCGram. Each repository gets an isolated workspace. Only the hub mounts `/var/run/docker.sock` (host-equivalent control). Workspaces persist the checkout, SSH host keys, VS Code server, and shared credentials.
+One hub runs the only Herdr server and optional CCGram. Each repository gets an isolated workspace. Workspaces persist the checkout, SSH host keys, VS Code server, and shared credentials.
 
 Traefik routes `<project>.code.<base-domain>` to code-server (`8080`) and `<project>.dev.<base-domain>` to preview (`3000` by default). Both use TLS and the configured OAuth middleware; neither HTTP port is published publicly.
+
+Inside the workspace and its Codex/Claude sessions, `DEVCTL_CODE_URL` and `DEVCTL_PREVIEW_URL` contain those exact URLs.
 
 ## Authentication
 
@@ -60,9 +62,11 @@ Keep the token file mode `0600`. Telegram uses long polling and an explicit allo
 
 CCGram automatically creates one topic per active Herdr agent. Codex or Claude may show first-run update, repository-trust, or hook-trust prompts before the topic becomes ready; review those prompts rather than automatically accepting them.
 
-## Docker socket opt-in
+## Docker access
 
-Workspaces have Docker CLI but no socket by default. For trusted repositories only, add `workspace.docker-host.override.yml` when starting the project; socket access is effectively root access to the server.
+Every workspace has Docker CLI and the host Docker socket, so its agent can start development containers. Docker socket access is effectively root access to the server: only create workspaces for repositories and agents you trust.
+
+The checkout is mounted at the same `/srv/devctl/projects/<project>/repo` path on the host and in the workspace, allowing relative bind mounts from nested Compose projects to work. `/workspace/project` remains a compatibility link for VS Code and SSH.
 
 ## Operations and backups
 

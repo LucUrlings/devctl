@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import grp
 import os
 import pwd
 import subprocess
@@ -41,9 +42,21 @@ def chown_tree(root: Path, uid: int, gid: int) -> None:
             os.chown(Path(directory) / name, uid, gid, follow_symlinks=False)
 
 
+def grant_docker_socket_access(username: str) -> None:
+    socket = Path("/var/run/docker.sock")
+    if not socket.exists():
+        return
+    gid = socket.stat().st_gid
+    try:
+        group = grp.getgrgid(gid).gr_name
+    except KeyError:
+        group = "docker-host"
+        subprocess.run(["groupadd", "--gid", str(gid), group], check=True)
+    subprocess.run(["usermod", "--append", "--groups", group, username], check=True)
+
+
 repo = os.environ.get("REPO_URL", "")
 project = os.environ.get("PROJECT_NAME", "")
-workspace = Path(os.environ.get("WORKSPACE_PATH", "/workspace/project"))
 branch = os.environ.get("REPO_BRANCH", "")
 depth = os.environ.get("REPO_DEPTH", "")
 if not repo:
@@ -53,12 +66,27 @@ try:
     repo = normalize_repo_url(repo)
 except WorkspaceError as exc:
     fail(str(exc))
-if workspace != Path("/workspace/project"):
-    fail("WORKSPACE_PATH must be /workspace/project in the managed image")
+workspace = Path(os.environ.get("WORKSPACE_PATH", f"/srv/devctl/projects/{project}/repo"))
+expected_workspace = Path(f"/srv/devctl/projects/{project}/repo")
+if workspace != expected_workspace:
+    fail(f"WORKSPACE_PATH must be {expected_workspace} in the managed image")
 
 workspace.mkdir(parents=True, exist_ok=True)
+compatibility_path = Path("/workspace/project")
+if compatibility_path.is_symlink():
+    if compatibility_path.resolve() != workspace:
+        fail(f"{compatibility_path} points to an unexpected location")
+elif compatibility_path.exists():
+    if not compatibility_path.is_dir() or any(compatibility_path.iterdir()):
+        fail(f"{compatibility_path} must be empty before creating its compatibility link")
+    compatibility_path.rmdir()
+    compatibility_path.symlink_to(workspace, target_is_directory=True)
+else:
+    compatibility_path.parent.mkdir(parents=True, exist_ok=True)
+    compatibility_path.symlink_to(workspace, target_is_directory=True)
 developer = pwd.getpwnam("developer")
 chown_tree(workspace, developer.pw_uid, developer.pw_gid)
+grant_docker_socket_access("developer")
 try:
     action = workspace_action(
         workspace,

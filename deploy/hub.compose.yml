@@ -3,6 +3,7 @@ name: devctl-hub
 services:
   herdr:
     image: ${HUB_IMAGE:-ghcr.io/lucurlings/devctl-hub:latest}
+    pull_policy: always
     command: ["herdr"]
     restart: unless-stopped
     environment:
@@ -32,6 +33,7 @@ services:
   telegram:
     profiles: ["telegram"]
     image: ${HUB_IMAGE:-ghcr.io/lucurlings/devctl-hub:latest}
+    pull_policy: always
     command: ["ccgram"]
     restart: unless-stopped
     depends_on:

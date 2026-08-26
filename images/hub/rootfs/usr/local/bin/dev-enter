@@ -22,7 +22,7 @@ if [[ ${#matches[@]} -ne 1 ]]; then
   exit 1
 fi
 
-docker_args=(exec --interactive --tty --user developer --workdir /workspace/project)
+docker_args=(exec --interactive --tty --user developer --workdir "/srv/devctl/projects/$slug/repo")
 for variable in HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID; do
   if [[ -n ${!variable:-} ]]; then
     docker_args+=(--env "$variable=${!variable}")

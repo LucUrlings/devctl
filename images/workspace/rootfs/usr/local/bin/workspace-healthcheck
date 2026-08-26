@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+import os
 import socket
 import urllib.request
 from pathlib import Path
 
-if not (Path("/workspace/project") / ".git").exists():
+if not (Path(os.environ.get("WORKSPACE_PATH", "/workspace/project")) / ".git").exists():
     raise SystemExit(1)
 with socket.create_connection(("127.0.0.1", 22), timeout=2):
     pass

@@ -33,9 +33,6 @@ TELEGRAM_ALLOWED_USERS=12345 TELEGRAM_GROUP_ID=-10012345 \
 
 docker compose --env-file "$validation_dir/workspace.env" \
   -f deploy/workspace.compose.yml config --quiet
-docker compose --env-file "$validation_dir/workspace.env" \
-  -f deploy/workspace.compose.yml \
-  -f deploy/workspace.docker-host.override.yml config --quiet
 
 rendered=$(docker compose --env-file "$validation_dir/workspace.env" \
   -f deploy/workspace.compose.yml config --format json)
@@ -46,4 +43,8 @@ jq -e '
   and .services.workspace.labels["traefik.http.routers.devctl-project-preview.middlewares"] == "google-oauth@docker"
   and .services.workspace.labels["traefik.http.services.devctl-project-code.loadbalancer.server.port"] == "8080"
   and .services.workspace.labels["traefik.http.services.devctl-project-preview.loadbalancer.server.port"] == "3000"
+  and .services.workspace.environment.DEVCTL_CODE_URL == "https://project.code.example.test"
+  and .services.workspace.environment.DEVCTL_PREVIEW_URL == "https://project.dev.example.test"
+  and any(.services.workspace.volumes[]; .source == "/var/run/docker.sock" and .target == "/var/run/docker.sock")
+  and any(.services.workspace.volumes[]; .source == "/srv/devctl/projects/project/repo" and .target == "/srv/devctl/projects/project/repo")
 ' <<< "$rendered" >/dev/null
