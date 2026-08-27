@@ -58,7 +58,7 @@ CCGram connects Telegram to the existing Herdr server. Create a BotFather bot, e
   --allowed-users <user-id>[,<user-id>] --group-id <-100-supergroup-id>
 ```
 
-Keep the token file mode `0600`. Telegram uses long polling and an explicit allowlist.
+Keep the token file mode `0600`. Telegram uses long polling and an explicit allowlist. Agent topics remain available for reconnection by default; automatic done/dead topic deletion is disabled.
 
 CCGram automatically creates one topic per active Herdr agent. Codex or Claude may show first-run update, repository-trust, or hook-trust prompts before the topic becomes ready; review those prompts rather than automatically accepting them.
 

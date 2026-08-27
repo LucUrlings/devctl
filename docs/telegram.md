@@ -22,6 +22,8 @@ Setup:
 
 CCGram creates one forum topic for each active Herdr agent tab. Agent first-run prompts may need approval before the topic becomes ready. A bare shell tab is not exposed as a Telegram topic.
 
+Devctl sets `TELEGRAM_AUTOCLOSE_DONE_MINUTES=0` and `TELEGRAM_AUTOCLOSE_DEAD_MINUTES=0`, keeping topics available for later reconnection. Set either value to a positive number of minutes in `hub.env` only when automatic topic deletion is wanted.
+
 Inspect it with:
 
 ```bash

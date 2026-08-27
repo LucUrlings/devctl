@@ -117,6 +117,12 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('profiles: ["telegram"]', HUB)
         self.assertIn("TELEGRAM_ALLOWED_USERS:-", HUB)
         self.assertIn("TELEGRAM_GROUP_ID:-", HUB)
+        self.assertIn("TELEGRAM_AUTOCLOSE_DONE_MINUTES:-0", HUB)
+        self.assertIn("TELEGRAM_AUTOCLOSE_DEAD_MINUTES:-0", HUB)
+
+    def test_agent_exit_status_is_left_in_the_pane(self) -> None:
+        helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        self.assertIn("[devctl] $agent exited with status", helper)
 
     def test_dev_enter_is_label_based_and_safe(self) -> None:
         result = subprocess.run(

@@ -205,6 +205,13 @@ wait_agent() {
   die "agent did not start in Herdr pane $pane; inspect it with 'herdr pane read $pane'"
 }
 
+run_agent_in_pane() {
+  local pane=$1 project=$2 agent=$3
+  compose_hub exec -T herdr herdr pane run "$pane" \
+    "HERDR_AGENT=$agent dev-enter $project $agent; status=\$?; echo '[devctl] $agent exited with status' \"\$status\"" \
+    >/dev/null
+}
+
 herdr_create() {
   local project=$1 agent=${2:-${DEFAULT_AGENT:-none}} result workspace pane shell_tab tab tab_pane
   result=$(compose_hub exec -T herdr herdr workspace create --cwd /srv/devctl/herdr --label "$project" --no-focus)
@@ -214,13 +221,13 @@ herdr_create() {
   [[ $workspace != null && $pane != null && $shell_tab != null ]] || die "Herdr workspace creation failed"
   compose_hub exec -T herdr herdr tab rename "$shell_tab" shell >/dev/null
   wait_pane_shell "$pane"
-  compose_hub exec -T herdr herdr pane run "$pane" "dev-enter $project shell" >/dev/null
+  run_agent_in_pane "$pane" "$project" shell
   [[ $agent == none || $agent == shell ]] && return
   tab=$(compose_hub exec -T herdr herdr tab create --workspace "$workspace" --cwd /srv/devctl/herdr --label "$agent" --no-focus)
   tab_pane=$(printf '%s\n' "$tab" | compose_hub exec -T herdr jq -r '.result.root_pane.pane_id')
   [[ $tab_pane != null ]] || die "Herdr tab creation failed"
   wait_pane_shell "$tab_pane"
-  compose_hub exec -T herdr herdr pane run "$tab_pane" "HERDR_AGENT=$agent dev-enter $project $agent" >/dev/null
+  run_agent_in_pane "$tab_pane" "$project" "$agent"
   wait_agent "$tab_pane"
 }
 
@@ -290,8 +297,7 @@ start_project_agent() {
     compose_hub exec -T herdr jq -r '.result.process_info.foreground_processes[0].name // empty')
   [[ $process == sh || $process == bash || $process == zsh || $process == fish ]] || \
     die "$project $agent pane is busy with process: ${process:-unknown}"
-  compose_hub exec -T herdr herdr pane run "$pane" \
-    "HERDR_AGENT=$agent dev-enter $project $agent" >/dev/null
+  run_agent_in_pane "$pane" "$project" "$agent"
   [[ $agent == shell ]] || wait_agent "$pane"
 }
 
