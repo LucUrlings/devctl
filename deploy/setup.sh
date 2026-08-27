@@ -297,7 +297,7 @@ start_project_agent() {
 
 agent_cmd() {
   (($# == 2)) || die "agent requires a project and codex, claude, or shell"
-  local project=$1 agent=$2 file configured_project
+  local project=$1 agent=$2 file configured_project container
   valid_name "$project" || die "invalid project name"
   [[ $agent == codex || $agent == claude || $agent == shell ]] || \
     die "agent must be codex, claude, or shell"
@@ -308,7 +308,12 @@ agent_cmd() {
   [[ -f $file ]] || die "project not found: $project"
   configured_project=$(project_name_from_file "$file")
   [[ $configured_project == "$project" ]] || die "project configuration mismatch"
-  workspace_compose "$project" "$file" up -d
+  container=$(workspace_compose "$project" "$file" ps --all --quiet workspace)
+  if [[ -n $container ]]; then
+    workspace_compose "$project" "$file" start workspace
+  else
+    workspace_compose "$project" "$file" up -d workspace
+  fi
   wait_healthy "devctl-$project" "$file" "$HERE/workspace.compose.yml" workspace
   start_project_agent "$project" "$agent"
   set_project_agent "$file" "$agent"

@@ -65,6 +65,10 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("multiple $agent tabs exist for project", helper)
         self.assertIn(".result.workspaces[]? | select(.label == $label)", helper)
         self.assertIn(".result.tabs[]? | select(.label == $label)", helper)
+        agent_function = helper[helper.index("agent_cmd() {") : helper.index("create_cmd() {")]
+        self.assertIn('start workspace', agent_function)
+        self.assertNotIn('--pull always', agent_function)
+        self.assertNotIn('--force-recreate', agent_function)
 
     def test_setup_waits_for_herdr_panes_and_agent(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")

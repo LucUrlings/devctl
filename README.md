@@ -80,7 +80,7 @@ The checkout is mounted at the same `/srv/devctl/projects/<project>/repo` path o
 docker compose --env-file hub.env -f hub.compose.yml logs -f
 ```
 
-Update and teardown preserve repositories, shared credentials, SSH host keys, VS Code state, project env files, Herdr state, and CCGram state. Update pauses Telegram, recreates the requested containers, restores each configured agent in its existing Herdr tab, and then resumes Telegram. Use `./setup.sh agent <project> codex|claude|shell` to start an agent manually.
+Update and teardown preserve repositories, shared credentials, SSH host keys, VS Code state, project env files, Herdr state, and CCGram state. Update pauses Telegram, recreates the requested containers, restores each configured agent in its existing Herdr tab, and then resumes Telegram. Use `./setup.sh agent <project> codex|claude|shell` to start an agent manually; it never pulls or replaces an existing workspace.
 
 Back up `/srv/devctl/projects`, `/srv/devctl/shared`, `/srv/devctl/herdr`, `/srv/devctl/ccgram`, `/srv/devctl/ssh`, and `/srv/devctl/secrets`.
 
