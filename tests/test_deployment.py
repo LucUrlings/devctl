@@ -26,6 +26,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("./setup.sh install", result.stdout)
         self.assertIn("./setup.sh create <repo>", result.stdout)
+        self.assertIn("./setup.sh agent PROJECT codex|claude|shell", result.stdout)
         self.assertIn("./setup.sh update [PROJECT]", result.stdout)
         self.assertIn("./setup.sh teardown PROJECT|--all", result.stdout)
         self.assertIn("./setup.sh list", result.stdout)
@@ -46,6 +47,24 @@ class DeploymentTests(unittest.TestCase):
         )
         self.assertIn('workspace_compose "$name" "$file" down --remove-orphans', helper)
         self.assertNotIn("rm -rf", helper)
+
+    def test_update_restores_agents_before_telegram(self) -> None:
+        helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        self.assertIn('compose_hub --profile telegram stop telegram', helper)
+        self.assertIn('start_project_agent "$name" "$agent"', helper)
+        restore = helper.index('start_project_agent "$name" "$agent"')
+        restart = helper.index(
+            'compose_hub --profile telegram up -d --pull always '
+            '--force-recreate telegram'
+        )
+        self.assertLess(restore, restart)
+
+    def test_agent_command_uses_labels_and_reuses_named_tab(self) -> None:
+        helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        self.assertIn("multiple Herdr workspaces match project", helper)
+        self.assertIn("multiple $agent tabs exist for project", helper)
+        self.assertIn(".result.workspaces[]? | select(.label == $label)", helper)
+        self.assertIn(".result.tabs[]? | select(.label == $label)", helper)
 
     def test_setup_waits_for_herdr_panes_and_agent(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
