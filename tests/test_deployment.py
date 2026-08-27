@@ -51,6 +51,7 @@ class DeploymentTests(unittest.TestCase):
 
     def test_update_and_teardown_preserve_project_data(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        self.assertIn('DEVCTL_SETUP_REFRESHED=true exec "$HERE/setup.sh" "$@"', helper)
         self.assertIn(
             'workspace_compose "$name" "$file" up -d --pull always '
             "--force-recreate --remove-orphans",
@@ -69,6 +70,18 @@ class DeploymentTests(unittest.TestCase):
             '--force-recreate telegram'
         )
         self.assertLess(restore, restart)
+
+    def test_project_update_does_not_upgrade_or_restart_a_stopped_hub_profile(self) -> None:
+        helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        self.assertIn("ps --status running --quiet telegram", helper)
+        self.assertIn('compose_hub --profile telegram start telegram', helper)
+        self.assertIn('[[ $update_hub == true ]] || compose_hub up -d herdr', helper)
+
+    def test_telegram_settings_are_updated_atomically(self) -> None:
+        helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        self.assertIn('set_env_value "$HERE/hub.env" TELEGRAM_ALLOWED_USERS "$users"', helper)
+        self.assertIn('set_env_value "$HERE/hub.env" TELEGRAM_GROUP_ID "$group"', helper)
+        self.assertNotIn("sed -i.bak", helper)
 
     def test_agent_command_uses_labels_and_reuses_named_tab(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")

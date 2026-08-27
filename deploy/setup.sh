@@ -32,6 +32,23 @@ ensure_bundle() {
   done
 }
 
+refresh_self() {
+  [[ ${DEVCTL_SETUP_REFRESHED:-false} == true ]] && return
+  local temporary=$HERE/.setup.sh.$$
+  curl -fsSL "$RAW/setup.sh" -o "$temporary" || {
+    rm -f -- "$temporary"
+    die "could not update setup.sh"
+  }
+  chmod 0755 "$temporary"
+  if cmp -s -- "$temporary" "$HERE/setup.sh"; then
+    rm -f -- "$temporary"
+    return
+  fi
+  mv -- "$temporary" "$HERE/setup.sh"
+  echo "Updated setup.sh; continuing."
+  DEVCTL_SETUP_REFRESHED=true exec "$HERE/setup.sh" "$@"
+}
+
 prepare_projects_dir() {
   [[ ! -e $PROJECTS || -d $PROJECTS ]] || die "$PROJECTS is not a directory"
   [[ ! -d $PROJECTS || -w $PROJECTS ]] || root chown "$(id -u):$(id -g)" "$PROJECTS"
@@ -232,12 +249,16 @@ herdr_create() {
 }
 
 set_project_agent() {
-  local file=$1 agent=$2 temporary=$1.tmp.$$
-  awk -v value="$agent" '
+  set_env_value "$1" PROJECT_AGENT "$2"
+}
+
+set_env_value() {
+  local file=$1 key=$2 value=$3 temporary=$1.tmp.$$
+  awk -v key="$key" -v value="$value" '
     BEGIN { found = 0 }
-    /^PROJECT_AGENT=/ { if (!found) print "PROJECT_AGENT=" value; found = 1; next }
+    index($0, key "=") == 1 { if (!found) print key "=" value; found = 1; next }
     { print }
-    END { if (!found) print "PROJECT_AGENT=" value }
+    END { if (!found) print key "=" value }
   ' "$file" > "$temporary"
   chmod 0600 "$temporary"
   mv -- "$temporary" "$file"
@@ -295,8 +316,11 @@ start_project_agent() {
   fi
   process=$(compose_hub exec -T herdr herdr pane process-info --pane "$pane" | \
     compose_hub exec -T herdr jq -r '.result.process_info.foreground_processes[0].name // empty')
-  [[ $process == sh || $process == bash || $process == zsh || $process == fish ]] || \
-    die "$project $agent pane is busy with process: ${process:-unknown}"
+  if [[ $agent == shell && $process == docker ]]; then
+    echo "$project shell is already running."
+    return
+  fi
+  wait_pane_shell "$pane"
   run_agent_in_pane "$pane" "$project" "$agent"
   [[ $agent == shell ]] || wait_agent "$pane"
 }
@@ -352,7 +376,7 @@ create_cmd() {
   exec 9>"$PROJECTS/.lock"
   flock -x 9
   file=$PROJECTS/$name.env
-  [[ ! -e $file ]] || die "project already exists: $name"
+  [[ ! -e $file ]] || die "project already exists: $name; use './setup.sh update $name' or './setup.sh agent $name <agent>'"
   if [[ -z $port ]]; then
     port=$(next_port)
   else
@@ -397,10 +421,9 @@ update_cmd() {
   load_config
   prepare_projects_dir
 
-  local -a hub_profile=() files=()
-  local file name agent restart_telegram=false
-  if [[ -n $(compose_hub --profile telegram ps --all --quiet telegram 2>/dev/null) ]]; then
-    hub_profile=(--profile telegram)
+  local -a files=()
+  local file name agent restart_telegram=false update_hub=false
+  if [[ -n $(compose_hub --profile telegram ps --status running --quiet telegram 2>/dev/null) ]]; then
     compose_hub --profile telegram stop telegram
     restart_telegram=true
     trap 'if [[ ${restart_telegram:-false} == true ]]; then compose_hub --profile telegram up -d telegram >/dev/null 2>&1 || true; fi' EXIT
@@ -411,12 +434,13 @@ update_cmd() {
     [[ -f $PROJECTS/$1.env ]] || die "project not found: $1"
     files=("$PROJECTS/$1.env")
   else
+    update_hub=true
     shopt -s nullglob
     files=("$PROJECTS"/*.env)
     shopt -u nullglob
-    compose_hub "${hub_profile[@]}" up -d --pull always --force-recreate --remove-orphans herdr
+    compose_hub up -d --pull always --force-recreate --remove-orphans herdr
   fi
-  compose_hub up -d herdr
+  [[ $update_hub == true ]] || compose_hub up -d herdr
   wait_healthy devctl-hub "$HERE/hub.env" "$HERE/hub.compose.yml" herdr
 
   for file in "${files[@]}"; do
@@ -427,7 +451,11 @@ update_cmd() {
     [[ $agent == none ]] || start_project_agent "$name" "$agent"
   done
   if [[ $restart_telegram == true ]]; then
-    compose_hub --profile telegram up -d --pull always --force-recreate telegram
+    if [[ $update_hub == true ]]; then
+      compose_hub --profile telegram up -d --pull always --force-recreate telegram
+    else
+      compose_hub --profile telegram start telegram
+    fi
     wait_healthy devctl-hub "$HERE/hub.env" "$HERE/hub.compose.yml" telegram
     restart_telegram=false
   fi
@@ -486,9 +514,12 @@ telegram_cmd() {
   [[ $users =~ ^[0-9]+(,[0-9]+)*$ && $group =~ ^-100[0-9]+$ && -f $token ]] || die "invalid Telegram settings"
   [[ $(stat -c '%a' "$token") == 600 ]] || die "token file must have mode 0600"
   [[ -f $HERE/hub.env ]] || die "run './setup.sh install' first"
-  sed -i.bak -e "s/^TELEGRAM_ALLOWED_USERS=.*/TELEGRAM_ALLOWED_USERS=$users/" -e "s/^TELEGRAM_GROUP_ID=.*/TELEGRAM_GROUP_ID=$group/" "$HERE/hub.env"; rm -f "$HERE/hub.env.bak"
+  set_env_value "$HERE/hub.env" TELEGRAM_ALLOWED_USERS "$users"
+  set_env_value "$HERE/hub.env" TELEGRAM_GROUP_ID "$group"
   root install -m 0600 "$token" "$STATE/secrets/telegram-bot-token"
   compose_hub --profile telegram up -d
+  wait_healthy devctl-hub "$HERE/hub.env" "$HERE/hub.compose.yml" telegram
+  echo "Telegram configured and running."
 }
 
 main() {
@@ -496,7 +527,7 @@ main() {
     install) shift; install_cmd "$@";;
     create) (($# >= 2)) || die "create requires a repository URL"; shift; create_cmd "$@";;
     agent) shift; agent_cmd "$@";;
-    update) shift; update_cmd "$@";;
+    update) refresh_self "$@"; shift; update_cmd "$@";;
     teardown) shift; teardown_cmd "$@";;
     list) list_cmd;;
     telegram) shift; telegram_cmd "$@";;

@@ -6,6 +6,8 @@ Docker workspaces with code-server, VS Code SSH, Herdr, Codex, Claude, and optio
 
 Run on the Docker server. Download the setup script first:
 
+Requires Docker Compose plus an existing Traefik network and OAuth middleware. Point wildcard DNS for `*.code.<base-domain>` and `*.dev.<base-domain>` at the server.
+
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/setup.sh?$(date +%s)" -o setup.sh
 chmod +x setup.sh
@@ -81,14 +83,14 @@ The checkout is mounted at the same `/srv/devctl/projects/<project>/repo` path o
 ```bash
 ./setup.sh list
 ./setup.sh update              # Update hub and every workspace
-./setup.sh update <project>    # Update one workspace
+./setup.sh update <project>    # Update one workspace; leave the hub unchanged
 ./setup.sh agent <project> codex
 ./setup.sh teardown <project>  # Remove one workspace's containers
 ./setup.sh teardown --all      # Remove all containers, including the hub
 docker compose --env-file hub.env -f hub.compose.yml logs -f
 ```
 
-Update and teardown preserve repositories, shared credentials, SSH host keys, VS Code state, project env files, Herdr state, and CCGram state. Update pauses Telegram, recreates the requested containers, restores each configured agent in its existing Herdr tab, and then resumes Telegram. Use `./setup.sh agent <project> codex|claude|shell` to start an agent manually; it never pulls or replaces an existing workspace.
+Update first refreshes `setup.sh` and the deployment bundle. Update and teardown preserve repositories, shared credentials, SSH host keys, VS Code state, project env files, Herdr state, and CCGram state. Update pauses Telegram, recreates the requested containers, restores each configured agent in its existing Herdr tab, and then resumes Telegram. Use `./setup.sh agent <project> codex|claude|shell` to start an agent manually; it never pulls or replaces an existing workspace.
 
 Codex and Claude may update themselves when you accept their update prompts. Codex, Claude, GitHub CLI, and the workspace Herdr CLI are installed under the non-root `developer` user. In-container changes survive normal restarts; recreating the workspace uses the pinned versions from the newly pulled image. The central Herdr server remains image-managed and is upgraded by `./setup.sh update`.
 

@@ -40,5 +40,5 @@ CVE-2026-69152
 CVE-2026-69192
 # Owner: @LucUrlings; latest npm/code-server bundles tar below 7.5.21; expires 2026-09-30.
 CVE-2026-73566
-# Owner: @LucUrlings; latest code-server 4.133.0 bundles js-yaml 4.3.0; expires 2026-09-30.
+# Owner: @LucUrlings; latest code-server 4.135.0 bundles js-yaml 4.3.0; expires 2026-09-30.
 GHSA-5p4m-2wfm-xmqj
