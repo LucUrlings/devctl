@@ -16,6 +16,17 @@ WORKSPACE_ENTRYPOINT = (
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_user_facing_cli_installations_are_developer_owned(self) -> None:
+        dockerfile = (ROOT / "images/workspace/Dockerfile").read_text()
+        self.assertIn("NPM_CONFIG_PREFIX=/home/developer/.local", dockerfile)
+        self.assertIn("@anthropic-ai/claude-code", dockerfile)
+        self.assertIn(
+            "HERDR_INSTALL_DIR=/home/developer/.local/bin",
+            dockerfile,
+        )
+        self.assertIn("GH_INSTALL_DIR=/home/developer/.local/bin", dockerfile)
+        self.assertIn("chown -R developer:developer /home/developer/.local", dockerfile)
+
     def test_setup_has_only_the_small_workflow(self) -> None:
         result = subprocess.run(
             [str(ROOT / "deploy/setup.sh"), "help"],

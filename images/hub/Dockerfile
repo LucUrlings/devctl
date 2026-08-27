@@ -9,6 +9,8 @@ FROM node:${NODE_VERSION}-trixie-slim AS agents
 ARG CODEX_VERSION=0.149.1
 ARG CLAUDE_CODE_VERSION=2.1.246
 ARG NPM_VERSION
+ENV NPM_CONFIG_PREFIX=/opt/user-local \
+    PATH=/opt/user-local/bin:${PATH}
 RUN npm install --global --ignore-scripts=false \
       --allow-scripts=@anthropic-ai/claude-code \
       "@openai/codex@${CODEX_VERSION}" \
@@ -19,6 +21,11 @@ RUN npm install --global --ignore-scripts=false \
 FROM docker:${DOCKER_CLI_VERSION}-cli-alpine3.24 AS dockercli
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 FROM python:${PYTHON_VERSION}-slim-trixie
+
+# Login commands run as developer. Keep agent CLIs in its writable npm prefix;
+# the central Herdr server itself remains an image-managed system binary.
+ENV NPM_CONFIG_PREFIX=/home/developer/.local \
+    PATH=/home/developer/.local/bin:${PATH}
 
 ARG TARGETARCH
 ARG HERDR_VERSION=0.8.2
@@ -79,16 +86,15 @@ RUN apt-get update \
     && ln -s /srv/devctl/shared/codex /home/developer/.codex
 
 COPY --from=agents /usr/local/ /usr/local/
-RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
-    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
-      /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx
+COPY --from=agents --chown=developer:developer /opt/user-local/ /home/developer/.local/
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/ /usr/local/libexec/docker/cli-plugins/
 COPY --from=uv /uv /uvx /usr/local/bin/
 COPY images/common/install-release-tools.sh /tmp/install-release-tools.sh
 RUN chmod +x /tmp/install-release-tools.sh \
-    && /tmp/install-release-tools.sh \
+    && GH_INSTALL_DIR=/home/developer/.local/bin /tmp/install-release-tools.sh \
     && rm /tmp/install-release-tools.sh \
+    && chown -R developer:developer /home/developer/.local \
     && uv pip install --system --no-cache \
       "ccgram==${CCGRAM_VERSION}" \
       "msgpack==${MSGPACK_VERSION}" \

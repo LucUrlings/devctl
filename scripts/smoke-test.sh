@@ -8,4 +8,14 @@ docker image inspect "$hub_image" >/dev/null
 docker image inspect "$workspace_image" >/dev/null
 docker run --rm --entrypoint image-versions "$hub_image"
 docker run --rm --entrypoint image-versions "$workspace_image"
+docker run --rm --entrypoint sh "$workspace_image" -c '
+  test "$(npm prefix --global)" = /home/developer/.local
+  runuser --user developer -- sh -c '\''
+    for tool in codex claude gh herdr; do
+      path=$(command -v "$tool")
+      test -n "$path"
+      test -w "$(dirname "$path")"
+    done
+  '\''
+'
 echo "Image smoke tests passed"

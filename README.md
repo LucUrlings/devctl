@@ -82,6 +82,8 @@ docker compose --env-file hub.env -f hub.compose.yml logs -f
 
 Update and teardown preserve repositories, shared credentials, SSH host keys, VS Code state, project env files, Herdr state, and CCGram state. Update pauses Telegram, recreates the requested containers, restores each configured agent in its existing Herdr tab, and then resumes Telegram. Use `./setup.sh agent <project> codex|claude|shell` to start an agent manually; it never pulls or replaces an existing workspace.
 
+Codex and Claude may update themselves when you accept their update prompts. Codex, Claude, GitHub CLI, and the workspace Herdr CLI are installed under the non-root `developer` user. In-container changes survive normal restarts; recreating the workspace uses the pinned versions from the newly pulled image. The central Herdr server remains image-managed and is upgraded by `./setup.sh update`.
+
 Back up `/srv/devctl/projects`, `/srv/devctl/shared`, `/srv/devctl/herdr`, `/srv/devctl/ccgram`, `/srv/devctl/ssh`, and `/srv/devctl/secrets`.
 
 Images: `ghcr.io/lucurlings/devctl-hub:latest` and `ghcr.io/lucurlings/devctl-workspace:latest` (amd64/arm64).
