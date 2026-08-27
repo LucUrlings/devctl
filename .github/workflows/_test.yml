@@ -49,7 +49,9 @@ jobs:
           context: .
           file: images/hub/Dockerfile
           platforms: linux/amd64
+          load: true
           push: false
+          tags: devctl-hub:test
           cache-from: type=gha,scope=test-hub
           cache-to: type=gha,mode=max,scope=test-hub
       - name: Build workspace for the native CI platform
@@ -58,6 +60,13 @@ jobs:
           context: .
           file: images/workspace/Dockerfile
           platforms: linux/amd64
+          load: true
           push: false
+          tags: devctl-workspace:test
           cache-from: type=gha,scope=test-workspace
           cache-to: type=gha,mode=max,scope=test-workspace
+      - name: Smoke-test images and developer-owned CLIs
+        env:
+          HUB_IMAGE: devctl-hub:test
+          WORKSPACE_IMAGE: devctl-workspace:test
+        run: ./scripts/smoke-test.sh
