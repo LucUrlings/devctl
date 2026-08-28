@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 from importlib.machinery import SourceFileLoader
 import json
@@ -37,8 +38,73 @@ assert RECONCILE_SPEC and RECONCILE_SPEC.loader
 HUB_RECONCILE_MODULE = importlib.util.module_from_spec(RECONCILE_SPEC)
 RECONCILE_SPEC.loader.exec_module(HUB_RECONCILE_MODULE)
 
+CCGRAM_RUNTIME_PATH = ROOT / "images/hub/rootfs/usr/local/bin/ccgram-runtime"
+CCGRAM_RUNTIME_SPEC = importlib.util.spec_from_loader(
+    "ccgram_runtime", SourceFileLoader("ccgram_runtime", str(CCGRAM_RUNTIME_PATH))
+)
+assert CCGRAM_RUNTIME_SPEC and CCGRAM_RUNTIME_SPEC.loader
+CCGRAM_RUNTIME_MODULE = importlib.util.module_from_spec(CCGRAM_RUNTIME_SPEC)
+CCGRAM_RUNTIME_SPEC.loader.exec_module(CCGRAM_RUNTIME_MODULE)
+
 
 class DeploymentTests(unittest.TestCase):
+    def test_ccgram_prompt_correlation_survives_herdr_target_changes(self) -> None:
+        module = CCGRAM_RUNTIME_MODULE
+        self.assertEqual(
+            module._topic_key(7, "old-target", 42, -1001),
+            module._topic_key(7, "new-target", 42, -1001),
+        )
+        self.assertGreater(module._TELEGRAM_INJECTION_TTL_SECONDS, 60 * 60)
+
+    def test_ccgram_uses_atomic_herdr_agent_prompt(self) -> None:
+        module = CCGRAM_RUNTIME_MODULE
+
+        class FakeError(Exception):
+            pass
+
+        class FakeManager:
+            def __init__(self) -> None:
+                self.calls: list[list[str]] = []
+                self.fallback_calls: list[tuple[str, str]] = []
+
+            async def send(
+                self,
+                window_id: str,
+                text: str,
+                *,
+                enter: bool = True,
+                literal: bool = True,
+                raw: bool = False,
+            ) -> bool:
+                del enter, literal, raw
+                self.fallback_calls.append((window_id, text))
+                return True
+
+            async def guard_session_target(self, window_id: str) -> object:
+                del window_id
+                return type("Record", (), {"pane_id": "w1:p2"})()
+
+            async def _call_ok(self, args: list[str]) -> bool:
+                self.calls.append(args)
+                return True
+
+            async def _after_action_failure(self, window_id: str) -> None:
+                raise AssertionError(f"unexpected failure for {window_id}")
+
+        module._install_herdr_prompt(FakeManager, FakeError)
+        manager = FakeManager()
+        self.assertTrue(asyncio.run(manager.send("target", "git pull please")))
+        self.assertEqual(
+            manager.calls,
+            [["agent", "prompt", "w1:p2", "git pull please"]],
+        )
+        self.assertEqual(manager.fallback_calls, [])
+
+        self.assertTrue(
+            asyncio.run(manager.send("target", "Enter", enter=False, literal=False))
+        )
+        self.assertEqual(manager.fallback_calls, [("target", "Enter")])
+
     def test_user_facing_cli_installations_are_developer_owned(self) -> None:
         dockerfile = (ROOT / "images/workspace/Dockerfile").read_text()
         self.assertIn("NPM_CONFIG_PREFIX=/home/developer/.local", dockerfile)

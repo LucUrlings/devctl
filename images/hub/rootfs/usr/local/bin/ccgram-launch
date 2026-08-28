@@ -9,4 +9,4 @@ fi
 export TELEGRAM_BOT_TOKEN
 TELEGRAM_BOT_TOKEN=$(<"$token_file")
 export HERDR_SOCKET_PATH=${HERDR_SOCKET_PATH:-/srv/devctl/herdr/run/herdr.sock}
-exec runuser --user developer --preserve-environment -- ccgram run
+exec runuser --user developer --preserve-environment -- ccgram-runtime run

@@ -76,7 +76,7 @@ For an older topic that was already stale before this behavior was installed, re
 
 Use the newly created project topic. A Telegram screen showing `Select Working Directory` with `Current: /` means the old topic is unbound and browsing inside the hub container; do not use it to start a project agent. `/sync` → **Fix** cleans up stale bindings and may close their old topics—it does not reconnect them.
 
-If Telegram shows the entire Codex terminal or `SessionStart hook (failed) ... code 127`, run `./setup.sh update` and then `./setup.sh agent <project> codex`. The update restores the native Herdr session hook inside every workspace.
+If Telegram shows the entire Codex terminal, repeats your prompt with a `👤` prefix, or reports `SessionStart hook (failed) ... code 127`, run `./setup.sh update` and then `./setup.sh agent <project> codex`. The update restores the native Herdr session hook and atomic Telegram prompt delivery.
 
 ## Docker access
 
