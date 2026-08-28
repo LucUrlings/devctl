@@ -82,7 +82,10 @@ class DeploymentTests(unittest.TestCase):
 
             async def guard_session_target(self, window_id: str) -> object:
                 del window_id
-                return type("Record", (), {"pane_id": "w1:p2"})()
+                composite = type("Composite", (), {"agent": "codex"})()
+                return type(
+                    "Record", (), {"pane_id": "w1:p2", "composite": composite}
+                )()
 
             async def _call_ok(self, args: list[str]) -> bool:
                 self.calls.append(args)
@@ -104,6 +107,80 @@ class DeploymentTests(unittest.TestCase):
             asyncio.run(manager.send("target", "Enter", enter=False, literal=False))
         )
         self.assertEqual(manager.fallback_calls, [("target", "Enter")])
+
+    def test_ccgram_keeps_raw_herdr_behavior_for_shell_topics(self) -> None:
+        module = CCGRAM_RUNTIME_MODULE
+
+        class FakeError(Exception):
+            pass
+
+        class FakeManager:
+            def __init__(self) -> None:
+                self.atomic_calls: list[list[str]] = []
+                self.fallback_calls: list[tuple[str, str, bool]] = []
+
+            async def send(
+                self,
+                window_id: str,
+                text: str,
+                *,
+                enter: bool = True,
+                literal: bool = True,
+                raw: bool = False,
+            ) -> bool:
+                del enter, literal
+                self.fallback_calls.append((window_id, text, raw))
+                return True
+
+            async def guard_session_target(self, window_id: str) -> object:
+                del window_id
+                composite = type("Composite", (), {"agent": "shell"})()
+                return type(
+                    "Record", (), {"pane_id": "w1:p1", "composite": composite}
+                )()
+
+            async def _call_ok(self, args: list[str]) -> bool:
+                self.atomic_calls.append(args)
+                return True
+
+        module._install_herdr_prompt(FakeManager, FakeError)
+        manager = FakeManager()
+        self.assertTrue(asyncio.run(manager.send("shell-target", "pwd", raw=True)))
+        self.assertEqual(manager.fallback_calls, [("shell-target", "pwd", True)])
+        self.assertEqual(manager.atomic_calls, [])
+
+    def test_ccgram_reports_atomic_prompt_failure(self) -> None:
+        module = CCGRAM_RUNTIME_MODULE
+
+        class FakeError(Exception):
+            pass
+
+        class FakeManager:
+            def __init__(self) -> None:
+                self.refreshed: list[str] = []
+
+            async def send(self, *args: object, **kwargs: object) -> bool:
+                del args, kwargs
+                raise AssertionError("unexpected fallback")
+
+            async def guard_session_target(self, window_id: str) -> object:
+                del window_id
+                composite = type("Composite", (), {"agent": "claude"})()
+                return type(
+                    "Record", (), {"pane_id": "w2:p3", "composite": composite}
+                )()
+
+            async def _call_ok(self, args: list[str]) -> bool:
+                del args
+                return False
+
+            async def _after_action_failure(self, window_id: str) -> None:
+                self.refreshed.append(window_id)
+
+        module._install_herdr_prompt(FakeManager, FakeError)
+        manager = FakeManager()
+        self.assertFalse(asyncio.run(manager.send("claude-target", "continue")))
+        self.assertEqual(manager.refreshed, ["claude-target"])
 
     def test_user_facing_cli_installations_are_developer_owned(self) -> None:
         dockerfile = (ROOT / "images/workspace/Dockerfile").read_text()

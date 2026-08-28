@@ -8,6 +8,7 @@ from typing import Any
 
 
 _TELEGRAM_INJECTION_TTL_SECONDS = 6 * 60 * 60
+_ATOMIC_PROMPT_AGENTS = frozenset({"claude", "codex"})
 
 
 def _topic_key(
@@ -49,6 +50,15 @@ def _install_herdr_prompt(manager_class: type[Any], error_class: type[Exception]
             record = await self.guard_session_target(window_id)
         except error_class:
             return False
+        if record.composite.agent.lower() not in _ATOMIC_PROMPT_AGENTS:
+            return await original_send(
+                self,
+                window_id,
+                text,
+                enter=enter,
+                literal=literal,
+                raw=raw,
+            )
         ok = await self._call_ok(["agent", "prompt", record.pane_id, text])
         if not ok:
             await self._after_action_failure(window_id)
