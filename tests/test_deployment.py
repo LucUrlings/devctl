@@ -112,6 +112,8 @@ class DeploymentTests(unittest.TestCase):
             setup = temporary / "setup.sh"
             setup.write_bytes((ROOT / "deploy/setup.sh").read_bytes())
             setup.chmod(0o755)
+            (temporary / "devctl.env").write_text("", encoding="utf-8")
+            (temporary / "hub.env").write_text("", encoding="utf-8")
             original = setup.read_bytes()
 
             fake_curl = temporary / "curl"
@@ -136,6 +138,45 @@ class DeploymentTests(unittest.TestCase):
             self.assertIn("could not update setup.sh", result.stderr)
             self.assertEqual(setup.read_bytes(), original)
             self.assertFalse(any(temporary.glob(".setup.sh.*")))
+
+    def test_update_checks_installation_before_downloading_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            setup = temporary / "setup.sh"
+            setup.write_bytes((ROOT / "deploy/setup.sh").read_bytes())
+            setup.chmod(0o755)
+            called = temporary / "curl-called"
+            fake_curl = temporary / "curl"
+            fake_curl.write_text(
+                "#!/bin/sh\n"
+                'touch "$CURL_CALLED"\n'
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            fake_curl.chmod(0o755)
+
+            result = subprocess.run(
+                [str(setup), "update"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=os.environ
+                | {
+                    "CURL_CALLED": str(called),
+                    "PATH": f"{temporary}:{os.environ['PATH']}",
+                },
+            )
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("run './setup.sh install' first", result.stderr)
+            self.assertFalse(called.exists())
+            for name in (
+                "hub.compose.yml",
+                "hub.env.example",
+                "workspace.compose.yml",
+                "workspace.env.example",
+            ):
+                self.assertFalse((temporary / name).exists())
 
     def test_create_is_idempotent_with_background_reconciliation(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
@@ -229,6 +270,12 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("/var/run/docker.sock:/var/run/docker.sock", WORKSPACE)
         self.assertIn("/srv/devctl/herdr/run:/run/herdr:ro", WORKSPACE)
         self.assertNotIn("/srv/devctl/herdr:/srv/devctl/herdr", WORKSPACE)
+        self.assertIn(
+            "/srv/devctl/shared/codex:/srv/devctl/shared/codex:ro", WORKSPACE
+        )
+        self.assertIn(
+            "/srv/devctl/shared/claude:/srv/devctl/shared/claude:ro", WORKSPACE
+        )
 
     def test_workspace_exposes_routes_to_agents(self) -> None:
         self.assertIn("HOME: /home/developer", WORKSPACE)
@@ -349,6 +396,11 @@ class DeploymentTests(unittest.TestCase):
         healthcheck = (ROOT / "images/hub/rootfs/usr/local/bin/hub-healthcheck").read_text()
         self.assertIn("herdr integration install codex", entrypoint)
         self.assertIn("herdr integration install claude", entrypoint)
+        self.assertEqual(entrypoint.count("herdr integration install codex"), 2)
+        self.assertLess(
+            entrypoint.index("ccgram hook --provider codex --install"),
+            entrypoint.rindex("herdr integration install codex"),
+        )
         self.assertIn("/usr/local/bin/hub-reconcile --watch", launcher)
         self.assertIn("reconciler exited unexpectedly", launcher)
         self.assertIn("STARTUP_GRACE_SECONDS = 10", HUB_RECONCILE)
@@ -504,6 +556,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('claude) command=(claude "$@")', DEV_ENTER)
         self.assertIn("docker inspect --format", DEV_ENTER)
         self.assertIn("[[ $health != healthy ]]", DEV_ENTER)
+        self.assertIn("--env HERDR_ENV=1", DEV_ENTER)
         self.assertIn("exit 75", DEV_ENTER)
 
     def test_generated_env_files_are_ignored(self) -> None:

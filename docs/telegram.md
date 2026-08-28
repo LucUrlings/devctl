@@ -42,6 +42,8 @@ This starts a persistent agent wrapper in the selected workspace repository. CCG
 
 `/sync` audits CCGram state. Choosing **Fix** removes stale bindings and may close their old Telegram topics. It is a cleanup command, not a reconnection command.
 
+If a topic shows the entire Codex terminal instead of agent responses, inspect it for `SessionStart hook (failed)` with exit code `127`. Run `./setup.sh update` followed by `./setup.sh agent <project> codex`; this recreates the workspace with the shared Herdr hook path available and starts a correctly identified native session.
+
 Inspect it with:
 
 ```bash

@@ -39,7 +39,7 @@ for variable in HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID; do
     docker_args+=(--env "$variable=${!variable}")
   fi
 done
-docker_args+=(--env HERDR_SOCKET_PATH=/run/herdr/herdr.sock)
+docker_args+=(--env HERDR_ENV=1 --env HERDR_SOCKET_PATH=/run/herdr/herdr.sock)
 case "$agent" in
   codex) command=(codex "$@") ;;
   claude) command=(claude "$@") ;;

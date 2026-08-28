@@ -55,6 +55,13 @@ case "$mode" in
       HOME=/home/developer \
       CCGRAM_DIR=/srv/devctl/ccgram \
       ccgram hook --provider codex --install >/dev/null
+    # CCGram currently writes the deprecated `codex_hooks` feature alias.
+    # Re-running the official Herdr installer preserves both hooks while
+    # migrating the shared Codex config to the canonical `hooks` key.
+    runuser --user developer -- env \
+      HOME=/home/developer \
+      CODEX_HOME=/srv/devctl/shared/codex \
+      herdr integration install codex >/dev/null
     exec /usr/local/bin/ccgram-launch
     ;;
   *)

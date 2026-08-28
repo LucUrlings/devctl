@@ -58,6 +58,10 @@ refresh_self() {
   DEVCTL_SETUP_REFRESHED=true exec "$HERE/setup.sh" "$@"
 }
 
+require_installed() {
+  [[ -f $CONFIG && -f $HERE/hub.env ]] || die "run './setup.sh install' first"
+}
+
 prepare_projects_dir() {
   [[ ! -e $PROJECTS || -d $PROJECTS ]] || die "$PROJECTS is not a directory"
   [[ ! -d $PROJECTS || -w $PROJECTS ]] || root chown "$(id -u):$(id -g)" "$PROJECTS"
@@ -475,8 +479,8 @@ project_workspace_id() {
 
 update_cmd() {
   (($# <= 1)) || die "update accepts at most one project"
+  require_installed
   ensure_bundle true
-  [[ -f $HERE/hub.env ]] || die "run './setup.sh install' first"
   load_config
   prepare_projects_dir
 
@@ -610,7 +614,7 @@ main() {
     install) shift; install_cmd "$@";;
     create) (($# >= 2)) || die "create requires a repository URL"; shift; create_cmd "$@";;
     agent) shift; agent_cmd "$@";;
-    update) refresh_self "$@"; shift; update_cmd "$@";;
+    update) require_installed; refresh_self "$@"; shift; update_cmd "$@";;
     teardown) shift; teardown_cmd "$@";;
     list) list_cmd;;
     telegram) shift; telegram_cmd "$@";;

@@ -76,6 +76,8 @@ For an older topic that was already stale before this behavior was installed, re
 
 Use the newly created project topic. A Telegram screen showing `Select Working Directory` with `Current: /` means the old topic is unbound and browsing inside the hub container; do not use it to start a project agent. `/sync` → **Fix** cleans up stale bindings and may close their old topics—it does not reconnect them.
 
+If Telegram shows the entire Codex terminal or `SessionStart hook (failed) ... code 127`, run `./setup.sh update` and then `./setup.sh agent <project> codex`. The update restores the native Herdr session hook inside every workspace.
+
 ## Docker access
 
 Every workspace has Docker CLI and the host Docker socket, so its agent can start development containers. Docker socket access is effectively root access to the server: only create workspaces for repositories and agents you trust.
@@ -94,7 +96,7 @@ The checkout is mounted at the same `/srv/devctl/projects/<project>/repo` path o
 docker compose --env-file hub.env -f hub.compose.yml logs -f
 ```
 
-Update first refreshes `setup.sh` and the deployment bundle. Update and teardown preserve repositories, shared credentials, SSH host keys, VS Code state, project env files, and agent conversation history. Single-project teardown also closes that project's live Herdr workspace so it cannot keep retrying against a stopped container; `./setup.sh agent <project> codex|claude|shell` recreates it later. Update pauses Telegram, recreates the requested containers, restores each configured agent in its existing Herdr tab, and then resumes Telegram.
+After confirming the folder was installed, update refreshes `setup.sh` and the deployment bundle. Update and teardown preserve repositories, shared credentials, SSH host keys, VS Code state, project env files, and agent conversation history. Single-project teardown also closes that project's live Herdr workspace so it cannot keep retrying against a stopped container; `./setup.sh agent <project> codex|claude|shell` recreates it later. Update pauses Telegram, recreates the requested containers, restores each configured agent in its existing Herdr tab, and then resumes Telegram.
 
 Codex and Claude may update themselves when you accept their update prompts. Codex, Claude, GitHub CLI, and the workspace Herdr CLI are installed under the non-root `developer` user. In-container changes survive normal restarts; recreating the workspace uses the pinned versions from the newly pulled image. The central Herdr server remains image-managed and is upgraded by `./setup.sh update`.
 
