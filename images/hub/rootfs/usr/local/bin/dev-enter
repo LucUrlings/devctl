@@ -3,6 +3,7 @@ set -euo pipefail
 
 slug=${1:-}
 agent=${2:-shell}
+shift "$(( $# >= 2 ? 2 : $# ))"
 if [[ ! "$slug" =~ ^[a-z0-9][a-z0-9-]{0,40}$ ]]; then
   echo "dev-enter: invalid project slug" >&2
   exit 2
@@ -17,9 +18,19 @@ mapfile -t matches < <(docker ps \
   --filter label=devctl.managed=true \
   --filter "label=devctl.project=$slug" \
   --format '{{.ID}}')
+if [[ ${#matches[@]} -eq 0 ]]; then
+  echo "dev-enter: workspace $slug is not running yet" >&2
+  exit 75
+fi
 if [[ ${#matches[@]} -ne 1 ]]; then
   echo "dev-enter: expected exactly one running container for $slug; found ${#matches[@]}" >&2
   exit 1
+fi
+health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' \
+  "${matches[0]}" 2>/dev/null || true)
+if [[ $health != healthy ]]; then
+  echo "dev-enter: workspace $slug is not healthy yet" >&2
+  exit 75
 fi
 
 docker_args=(exec --interactive --tty --user developer --workdir "/srv/devctl/projects/$slug/repo")
@@ -30,8 +41,11 @@ for variable in HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID; do
 done
 docker_args+=(--env HERDR_SOCKET_PATH=/run/herdr/herdr.sock)
 case "$agent" in
-  codex) command=(codex) ;;
-  claude) command=(claude) ;;
-  shell) command=(bash -l) ;;
+  codex) command=(codex "$@") ;;
+  claude) command=(claude "$@") ;;
+  shell)
+    [[ $# == 0 ]] || { echo "dev-enter: shell does not accept arguments" >&2; exit 2; }
+    command=(bash -l)
+    ;;
 esac
 exec docker "${docker_args[@]}" "${matches[0]}" "${command[@]}"

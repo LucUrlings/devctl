@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import importlib.util
+from importlib.machinery import SourceFileLoader
+import json
+import os
+import signal
 import subprocess
+import sys
+import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = (ROOT / "deploy/workspace.compose.yml").read_text(encoding="utf-8")
@@ -10,9 +19,23 @@ HUB = (ROOT / "deploy/hub.compose.yml").read_text(encoding="utf-8")
 DEV_ENTER = (ROOT / "images/hub/rootfs/usr/local/bin/dev-enter").read_text(
     encoding="utf-8"
 )
+DEV_SESSION = (ROOT / "images/hub/rootfs/usr/local/bin/dev-session").read_text(
+    encoding="utf-8"
+)
+HUB_RECONCILE = (ROOT / "images/hub/rootfs/usr/local/bin/hub-reconcile").read_text(
+    encoding="utf-8"
+)
 WORKSPACE_ENTRYPOINT = (
     ROOT / "images/workspace/rootfs/usr/local/bin/workspace-entrypoint"
 ).read_text(encoding="utf-8")
+
+RECONCILE_PATH = ROOT / "images/hub/rootfs/usr/local/bin/hub-reconcile"
+RECONCILE_SPEC = importlib.util.spec_from_loader(
+    "hub_reconcile", SourceFileLoader("hub_reconcile", str(RECONCILE_PATH))
+)
+assert RECONCILE_SPEC and RECONCILE_SPEC.loader
+HUB_RECONCILE_MODULE = importlib.util.module_from_spec(RECONCILE_SPEC)
+RECONCILE_SPEC.loader.exec_module(HUB_RECONCILE_MODULE)
 
 
 class DeploymentTests(unittest.TestCase):
@@ -49,16 +72,79 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("Host dev-$name", helper)
         self.assertIn("ProxyJump <server-alias>", helper)
 
+    def test_port_allocation_checks_docker_and_linux_listeners(self) -> None:
+        helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        port_free = helper[helper.index("port_free() {") : helper.index("next_port() {")]
+        self.assertIn('docker ps --filter "publish=$port"', port_free)
+        self.assertIn("tcp_tables=(/proc/net/tcp)", port_free)
+        self.assertIn("tcp_tables+=(/proc/net/tcp6)", port_free)
+        self.assertIn('[[ -r /proc/net/tcp ]] || return 1', port_free)
+
     def test_update_and_teardown_preserve_project_data(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
         self.assertIn('DEVCTL_SETUP_REFRESHED=true exec "$HERE/setup.sh" "$@"', helper)
+        self.assertIn('setup.sh?devctl_cache=$cache_bust', helper)
+        self.assertIn('[[ ! -s $temporary ]]', helper)
+        self.assertIn('bash -n "$temporary"', helper)
+        self.assertIn('$file?devctl_cache=$cache_bust', helper)
+        self.assertIn('stage_dir=$(mktemp -d "$HERE/.bundle.XXXXXX")', helper)
+        self.assertLess(
+            helper.index('downloaded+=("$file")'),
+            helper.index('mv -- "$stage_dir/$file" "$HERE/$file"'),
+        )
         self.assertIn(
             'workspace_compose "$name" "$file" up -d --pull always '
             "--force-recreate --remove-orphans",
             helper,
         )
         self.assertIn('workspace_compose "$name" "$file" down --remove-orphans', helper)
+        self.assertIn('herdr workspace close "$workspace"', helper)
+        teardown = helper[helper.index("teardown_cmd() {") : helper.index("login_cmd() {")]
+        self.assertIn('project_workspace_id "$name" >/dev/null', teardown)
+        self.assertIn('workspace=$(project_workspace_id "$name")', teardown)
+        self.assertIn('"code":"workspace_not_found"', teardown)
+        self.assertIn('die "could not close Herdr workspace $workspace"', teardown)
         self.assertNotIn("rm -rf", helper)
+
+    def test_self_update_rejects_an_invalid_download_without_replacing_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            setup = temporary / "setup.sh"
+            setup.write_bytes((ROOT / "deploy/setup.sh").read_bytes())
+            setup.chmod(0o755)
+            original = setup.read_bytes()
+
+            fake_curl = temporary / "curl"
+            fake_curl.write_text(
+                "#!/bin/sh\n"
+                "while [ \"$#\" -gt 0 ]; do\n"
+                "  if [ \"$1\" = -o ]; then printf '%s\\n' 'not valid bash (' > \"$2\"; exit 0; fi\n"
+                "  shift\n"
+                "done\n"
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            fake_curl.chmod(0o755)
+            result = subprocess.run(
+                [str(setup), "update"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=os.environ | {"PATH": f"{temporary}:{os.environ['PATH']}"},
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("could not update setup.sh", result.stderr)
+            self.assertEqual(setup.read_bytes(), original)
+            self.assertFalse(any(temporary.glob(".setup.sh.*")))
+
+    def test_create_is_idempotent_with_background_reconciliation(self) -> None:
+        helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
+        create = helper[helper.index("create_cmd() {") : helper.index("project_workspace_id() {")]
+        self.assertIn('start_project_agent "$name" "$DEFAULT_AGENT"', create)
+        self.assertIn("reconcile_now", create)
+        self.assertNotIn('herdr_create "$name"', create)
+        self.assertIn('[[ $agent == none ]] && return', helper)
+        self.assertIn("fcntl.flock(lock, fcntl.LOCK_EX)", HUB_RECONCILE)
 
     def test_update_restores_agents_before_telegram(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
@@ -75,7 +161,15 @@ class DeploymentTests(unittest.TestCase):
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
         self.assertIn("ps --status running --quiet telegram", helper)
         self.assertIn('compose_hub --profile telegram start telegram', helper)
-        self.assertIn('[[ $update_hub == true ]] || compose_hub up -d herdr', helper)
+        self.assertIn('compose_hub start herdr', helper)
+        self.assertIn('compose_hub up -d --pull missing herdr', helper)
+        project_update = helper[
+            helper.index("if [[ $update_hub == false ]]") : helper.index(
+                'wait_healthy devctl-hub'
+            )
+        ]
+        self.assertNotIn("--pull always", project_update)
+        self.assertNotIn("--force-recreate", project_update)
 
     def test_telegram_settings_are_updated_atomically(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
@@ -93,6 +187,10 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('start workspace', agent_function)
         self.assertNotIn('--pull always', agent_function)
         self.assertNotIn('--force-recreate', agent_function)
+        self.assertLess(
+            agent_function.index('set_project_agent "$file" "$agent"'),
+            agent_function.index('container=$(workspace_compose'),
+        )
 
     def test_setup_waits_for_herdr_panes_and_agent(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
@@ -137,6 +235,10 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("DEVCTL_CODE_URL: https://${PROJECT_NAME}.code.${BASE_DOMAIN:?set BASE_DOMAIN}", WORKSPACE)
         self.assertIn("DEVCTL_PREVIEW_URL: https://${PROJECT_NAME}.dev.${BASE_DOMAIN:?set BASE_DOMAIN}", WORKSPACE)
 
+    def test_readme_documents_preview_listener_binding(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("listen on `0.0.0.0:<port>`", readme)
+
     def test_telegram_is_optional(self) -> None:
         self.assertIn('profiles: ["telegram"]', HUB)
         self.assertIn("TELEGRAM_ALLOWED_USERS:-", HUB)
@@ -144,9 +246,247 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("TELEGRAM_AUTOCLOSE_DONE_MINUTES:-0", HUB)
         self.assertIn("TELEGRAM_AUTOCLOSE_DEAD_MINUTES:-0", HUB)
 
-    def test_agent_exit_status_is_left_in_the_pane(self) -> None:
+    def test_agent_pane_uses_persistent_resuming_session(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
-        self.assertIn("[devctl] $agent exited with status", helper)
+        self.assertIn('"exec dev-session $project $agent $mode"', helper)
+        self.assertIn('"exec dev-enter $project shell"', helper)
+        self.assertIn("export HERDR_AGENT=$agent", DEV_SESSION)
+        self.assertIn('dev-enter "$slug" "$agent" resume --last', DEV_SESSION)
+        self.assertIn('dev-enter "$slug" "$agent" --continue', DEV_SESSION)
+        self.assertIn("elif [[ $was_resume == true ]]", DEV_SESSION)
+        self.assertIn("while true", DEV_SESSION)
+        self.assertIn("[[ $mode == resume ]] && resume=true", DEV_SESSION)
+        self.assertIn("[[ $status -eq 75 || $running_count -ne 1 ]]", DEV_SESSION)
+        self.assertIn("resume_failures >= 3", DEV_SESSION)
+
+    def test_agent_resume_survives_temporary_workspace_unavailability(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            log = temporary / "calls"
+            marker = temporary / "first-call"
+            fake_enter = temporary / "dev-enter"
+            fake_enter.write_text(
+                "#!/bin/sh\n"
+                'printf "%s\\n" "$*" >> "$AUDIT_LOG"\n'
+                'if [ ! -e "$AUDIT_MARKER" ]; then : > "$AUDIT_MARKER"; exit 75; fi\n'
+                "sleep 30\n",
+                encoding="utf-8",
+            )
+            fake_docker = temporary / "docker"
+            fake_docker.write_text("#!/bin/sh\nprintf '%s\\n' container-id\n", encoding="utf-8")
+            fake_enter.chmod(0o755)
+            fake_docker.chmod(0o755)
+            environment = os.environ | {
+                "AUDIT_LOG": str(log),
+                "AUDIT_MARKER": str(marker),
+                "DEV_SESSION_RESTART_DELAY": "0",
+                "PATH": f"{temporary}:{os.environ['PATH']}",
+            }
+            process = subprocess.Popen(
+                [str(ROOT / "images/hub/rootfs/usr/local/bin/dev-session"), "audit", "codex", "resume"],
+                env=environment,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            try:
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline:
+                    calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+                    if len(calls) >= 2:
+                        break
+                    time.sleep(0.05)
+                self.assertGreaterEqual(len(calls), 2)
+                self.assertEqual(calls[:2], ["audit codex resume --last"] * 2)
+            finally:
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=3)
+
+    def test_agent_requires_repeated_resume_failures_before_clean_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            log = temporary / "calls"
+            fake_enter = temporary / "dev-enter"
+            fake_enter.write_text(
+                "#!/bin/sh\n"
+                'printf "%s\\n" "$*" >> "$AUDIT_LOG"\n'
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            fake_docker = temporary / "docker"
+            fake_docker.write_text("#!/bin/sh\nprintf '%s\\n' container-id\n", encoding="utf-8")
+            fake_enter.chmod(0o755)
+            fake_docker.chmod(0o755)
+            environment = os.environ | {
+                "AUDIT_LOG": str(log),
+                "DEV_SESSION_RESTART_DELAY": "0",
+                "PATH": f"{temporary}:{os.environ['PATH']}",
+            }
+            process = subprocess.Popen(
+                [str(ROOT / "images/hub/rootfs/usr/local/bin/dev-session"), "audit", "codex", "resume"],
+                env=environment,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            try:
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline:
+                    calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+                    if len(calls) >= 4:
+                        break
+                    time.sleep(0.05)
+                self.assertGreaterEqual(len(calls), 4)
+                self.assertEqual(calls[:3], ["audit codex resume --last"] * 3)
+                self.assertEqual(calls[3], "audit codex")
+            finally:
+                process.terminate()
+                process.wait(timeout=3)
+
+    def test_hub_restart_reconciles_workspace_panes_before_health(self) -> None:
+        entrypoint = (ROOT / "images/hub/rootfs/usr/local/bin/hub-entrypoint").read_text()
+        launcher = (ROOT / "images/hub/rootfs/usr/local/bin/herdr-server-launch").read_text()
+        healthcheck = (ROOT / "images/hub/rootfs/usr/local/bin/hub-healthcheck").read_text()
+        self.assertIn("herdr integration install codex", entrypoint)
+        self.assertIn("herdr integration install claude", entrypoint)
+        self.assertIn("/usr/local/bin/hub-reconcile --watch", launcher)
+        self.assertIn("reconciler exited unexpectedly", launcher)
+        self.assertIn("STARTUP_GRACE_SECONDS = 10", HUB_RECONCILE)
+        self.assertIn("STARTUP_DISCOVERY_SECONDS = 30", HUB_RECONCILE)
+        self.assertIn('docker_ps.append("--all")', HUB_RECONCILE)
+        self.assertIn("devctl-herdr-reconciled", healthcheck)
+        self.assertIn('"--filter",\n            "label=devctl.project"', HUB_RECONCILE)
+        self.assertIn('command = f"exec dev-session {slug} {label} resume"', HUB_RECONCILE)
+        self.assertIn('command = f"exec dev-enter {slug} shell"', HUB_RECONCILE)
+        self.assertIn("PROJECT_AGENT: ${PROJECT_AGENT:-none}", WORKSPACE)
+
+    def test_reconciler_does_not_recreate_an_intentionally_closed_agent_tab(self) -> None:
+        module = HUB_RECONCILE_MODULE
+        with (
+            mock.patch.object(module, "ensure_tab", return_value="shell-pane") as ensure,
+            mock.patch.object(module, "launch") as launch,
+            mock.patch.object(
+                module,
+                "herdr",
+                return_value={"tabs": [{"label": "shell", "tab_id": "w1:t1"}]},
+            ),
+        ):
+            module.reconcile_project(
+                "project", "codex", [{"label": "project", "workspace_id": "w1"}]
+            )
+        ensure.assert_called_once_with("w1", "shell")
+        launch.assert_called_once_with("shell-pane", "project", "shell")
+
+    def test_reconciler_uses_configured_agent_when_herdr_state_is_missing(self) -> None:
+        module = HUB_RECONCILE_MODULE
+        with (
+            mock.patch.object(module, "create_workspace", return_value=("w1", "shell-pane")),
+            mock.patch.object(module, "ensure_tab", return_value="agent-pane") as ensure,
+            mock.patch.object(module, "launch") as launch,
+            mock.patch.object(module, "herdr", return_value={"tabs": []}),
+        ):
+            module.reconcile_project("project", "codex", [])
+        ensure.assert_called_once_with("w1", "codex")
+        self.assertEqual(
+            launch.call_args_list,
+            [
+                mock.call("shell-pane", "project", "shell"),
+                mock.call("agent-pane", "project", "codex"),
+            ],
+        )
+
+    def test_reconciler_only_injects_into_an_idle_shell(self) -> None:
+        module = HUB_RECONCILE_MODULE
+        self.assertTrue(module.is_shell([{"name": "sh", "argv": ["/bin/sh"]}]))
+        self.assertTrue(module.is_shell([{"name": "bash", "argv": ["bash", "-i"]}]))
+        self.assertFalse(
+            module.is_shell(
+                [{"name": "bash", "argv": ["bash", "/usr/local/bin/unmanaged-task"]}]
+            )
+        )
+
+    def test_failed_reconciliation_never_marks_the_hub_ready(self) -> None:
+        module = HUB_RECONCILE_MODULE
+        with tempfile.TemporaryDirectory() as directory:
+            ready = Path(directory) / "ready"
+            with (
+                mock.patch.object(module, "READY_PATH", ready),
+                mock.patch.object(module, "reconcile_locked", return_value=False),
+                mock.patch.object(sys, "argv", ["hub-reconcile"]),
+            ):
+                self.assertEqual(module.main(), 1)
+            self.assertFalse(ready.exists())
+
+            with (
+                mock.patch.object(module, "READY_PATH", ready),
+                mock.patch.object(module, "reconcile_locked", return_value=True),
+                mock.patch.object(sys, "argv", ["hub-reconcile"]),
+            ):
+                self.assertEqual(module.main(), 0)
+            self.assertTrue(ready.exists())
+
+    def test_reconciler_waits_for_workspace_health(self) -> None:
+        module = HUB_RECONCILE_MODULE
+
+        def result(stdout: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess([], 0, stdout=stdout, stderr="")
+
+        starting = {
+            "Config": {
+                "Labels": {"devctl.project": "project"},
+                "Env": ["PROJECT_AGENT=codex"],
+            },
+            "State": {"Health": {"Status": "starting"}},
+        }
+        with mock.patch.object(
+            module,
+            "run",
+            side_effect=[result("container\n"), result(f"[{json.dumps(starting)}]")],
+        ):
+            projects, pending = module.running_projects()
+        self.assertEqual(projects, {})
+        self.assertTrue(pending)
+
+        starting["State"]["Health"]["Status"] = "healthy"
+        with mock.patch.object(
+            module,
+            "run",
+            side_effect=[result("container\n"), result(f"[{json.dumps(starting)}]")],
+        ):
+            projects, pending = module.running_projects()
+        self.assertEqual(projects, {"project": ("container", "codex")})
+        self.assertFalse(pending)
+        self.assertFalse(
+            module.is_shell(
+                [
+                    {"name": "bash", "argv": ["bash"]},
+                    {"name": "sleep", "argv": ["sleep", "10"]},
+                ]
+            )
+        )
+
+    def test_cold_start_waits_for_docker_to_start_known_workspaces(self) -> None:
+        module = HUB_RECONCILE_MODULE
+
+        def result(stdout: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess([], 0, stdout=stdout, stderr="")
+
+        stopped = {
+            "Config": {
+                "Labels": {"devctl.project": "project"},
+                "Env": ["PROJECT_AGENT=codex"],
+            },
+            "State": {"Running": False, "Status": "exited"},
+        }
+        with mock.patch.object(
+            module,
+            "run",
+            side_effect=[result("container\n"), result(f"[{json.dumps(stopped)}]")],
+        ) as run:
+            projects, pending = module.running_projects(include_stopped=True)
+        self.assertEqual(projects, {})
+        self.assertTrue(pending)
+        self.assertIn("--all", run.call_args_list[0].args[0])
 
     def test_dev_enter_is_label_based_and_safe(self) -> None:
         result = subprocess.run(
@@ -160,6 +500,11 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("--filter label=devctl.managed=true", DEV_ENTER)
         self.assertIn('label=devctl.project=$slug', DEV_ENTER)
         self.assertIn('--user developer --workdir "/srv/devctl/projects/$slug/repo"', DEV_ENTER)
+        self.assertIn('codex) command=(codex "$@")', DEV_ENTER)
+        self.assertIn('claude) command=(claude "$@")', DEV_ENTER)
+        self.assertIn("docker inspect --format", DEV_ENTER)
+        self.assertIn("[[ $health != healthy ]]", DEV_ENTER)
+        self.assertIn("exit 75", DEV_ENTER)
 
     def test_generated_env_files_are_ignored(self) -> None:
         for path in ("deploy/hub.env", "deploy/devctl.env", "deploy/projects/project.env", "deploy/projects/.lock"):

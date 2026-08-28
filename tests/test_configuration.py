@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import re
 import unittest
 from pathlib import Path
@@ -53,6 +54,21 @@ class ConfigurationTests(unittest.TestCase):
         containers = (workflows / "containers.yml").read_text(encoding="utf-8")
         self.assertIn("if: github.event_name != 'pull_request'", containers)
 
+    def test_publish_permissions_are_not_granted_to_test_jobs(self) -> None:
+        workflow = (ROOT / ".github/workflows/containers.yml").read_text(encoding="utf-8")
+        workflow_permissions = workflow[
+            workflow.index("permissions:") : workflow.index("concurrency:")
+        ]
+        self.assertIn("contents: read", workflow_permissions)
+        self.assertNotIn("packages: write", workflow_permissions)
+        self.assertNotIn("attestations: write", workflow_permissions)
+        self.assertNotIn("id-token: write", workflow_permissions)
+
+        publish = workflow[workflow.index("  publish:") :]
+        self.assertIn("packages: write", publish)
+        self.assertIn("attestations: write", publish)
+        self.assertIn("id-token: write", publish)
+
     def test_images_do_not_install_the_removed_python_cli(self) -> None:
         dockerfiles = "\n".join(
             (ROOT / path).read_text(encoding="utf-8")
@@ -60,6 +76,56 @@ class ConfigurationTests(unittest.TestCase):
         )
         self.assertNotIn("COPY devctl", dockerfiles)
         self.assertNotIn("/opt/devctl", dockerfiles)
+
+    def test_images_remove_the_unused_system_npm_copy(self) -> None:
+        for path in ("images/hub/Dockerfile", "images/workspace/Dockerfile"):
+            dockerfile = (ROOT / path).read_text(encoding="utf-8")
+            self.assertIn("rm -rf /usr/local/lib/node_modules/npm", dockerfile)
+            self.assertIn("rm -f /usr/local/bin/npm /usr/local/bin/npx", dockerfile)
+
+    def test_security_scans_the_image_published_by_workflow_run(self) -> None:
+        workflow = (ROOT / ".github/workflows/security.yml").read_text(encoding="utf-8")
+        self.assertIn("PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}", workflow)
+        self.assertIn('echo "value=sha-${PUBLISHED_SHA:0:7}"', workflow)
+        self.assertIn(
+            ":${{ steps.image-tag.outputs.value }}",
+            workflow,
+        )
+
+    def test_docker_build_context_excludes_runtime_secrets_and_state(self) -> None:
+        ignored = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+        for pattern in (
+            ".env",
+            "**/.env",
+            "**/hub.env",
+            "**/devctl.env",
+            "**/*.local.env",
+            "**/secrets",
+            "**/projects",
+        ):
+            self.assertIn(pattern, ignored)
+
+    def test_vulnerability_exceptions_are_owned_justified_and_unexpired(self) -> None:
+        lines = (ROOT / ".trivyignore").read_text(encoding="utf-8").splitlines()
+        findings = 0
+        for index, line in enumerate(lines):
+            if not line or line.startswith("#"):
+                continue
+            findings += 1
+            self.assertRegex(line, r"^(CVE-\d{4}-\d+|GHSA-[0-9a-z-]+)$")
+            self.assertGreater(index, 0)
+            justification = re.fullmatch(
+                r"# Owner: @[^;]+; .+; expires (\d{4}-\d{2}-\d{2})\.",
+                lines[index - 1],
+            )
+            self.assertIsNotNone(justification, line)
+            assert justification is not None
+            self.assertGreaterEqual(
+                date.fromisoformat(justification.group(1)),
+                date.today(),
+                line,
+            )
+        self.assertGreater(findings, 0)
 
 
 if __name__ == "__main__":

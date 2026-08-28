@@ -33,6 +33,17 @@ jobs:
         id: owner
         shell: bash
         run: echo "value=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Select published image tag
+        id: image-tag
+        shell: bash
+        env:
+          PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [[ "${{ github.event_name }}" == workflow_run ]]; then
+            echo "value=sha-${PUBLISHED_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=latest" >> "$GITHUB_OUTPUT"
+          fi
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
@@ -42,7 +53,7 @@ jobs:
       - name: Scan actionable vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ghcr.io/${{ steps.owner.outputs.value }}/devctl-${{ matrix.image }}:latest
+          image-ref: ghcr.io/${{ steps.owner.outputs.value }}/devctl-${{ matrix.image }}:${{ steps.image-tag.outputs.value }}
           version: v0.74.0
           format: table
           severity: HIGH,CRITICAL

@@ -91,7 +91,9 @@ COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/ /usr/local/libexec/docker/cli-plugins/
 COPY --from=uv /uv /uvx /usr/local/bin/
 COPY images/common/install-release-tools.sh /tmp/install-release-tools.sh
-RUN chmod +x /tmp/install-release-tools.sh \
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+    && chmod +x /tmp/install-release-tools.sh \
     && GH_INSTALL_DIR=/home/developer/.local/bin /tmp/install-release-tools.sh \
     && rm /tmp/install-release-tools.sh \
     && chown -R developer:developer /home/developer/.local \
@@ -101,7 +103,9 @@ RUN chmod +x /tmp/install-release-tools.sh \
       "setuptools==${SETUPTOOLS_VERSION}"
 
 COPY images/hub/rootfs/ /
-RUN chmod 0755 /usr/local/bin/dev-enter /usr/local/bin/hub-entrypoint \
+RUN chmod 0755 /usr/local/bin/dev-enter /usr/local/bin/dev-session \
+      /usr/local/bin/hub-reconcile \
+      /usr/local/bin/hub-entrypoint \
       /usr/local/bin/herdr-server-launch /usr/local/bin/ccgram-launch \
       /usr/local/bin/hub-healthcheck /usr/local/bin/image-versions
 

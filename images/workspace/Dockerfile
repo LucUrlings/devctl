@@ -115,7 +115,9 @@ COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/ /usr/local/libexec/
 COPY --from=uv /uv /uvx /usr/local/bin/
 COPY images/common/install-release-tools.sh /tmp/install-release-tools.sh
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-RUN chmod +x /tmp/install-release-tools.sh \
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+    && chmod +x /tmp/install-release-tools.sh \
     && GH_INSTALL_DIR=/home/developer/.local/bin \
        HERDR_INSTALL_DIR=/home/developer/.local/bin \
        /tmp/install-release-tools.sh \

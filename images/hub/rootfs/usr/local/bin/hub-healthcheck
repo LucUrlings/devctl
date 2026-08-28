@@ -6,6 +6,7 @@ case ${1:-herdr} in
     docker version >/dev/null
     herdr status server >/dev/null
     [[ -S ${HERDR_SOCKET_PATH:?} ]]
+    [[ -f ${DEVCTL_RECONCILED_PATH:-/run/devctl-herdr-reconciled} ]]
     ;;
   ccgram)
     [[ -S ${HERDR_SOCKET_PATH:?} ]]

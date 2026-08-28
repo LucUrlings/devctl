@@ -8,6 +8,18 @@ case "$mode" in
     install -d -m 0755 /srv/devctl/herdr /srv/devctl/herdr/run
     install -d -o developer -g developer -m 0700 \
       /srv/devctl/shared/codex /srv/devctl/shared/claude /srv/devctl/shared/gh
+    # Official Herdr hooks publish stable native session IDs. CCGram uses those
+    # IDs to keep Telegram bindings stable when Herdr recreates pane terminals.
+    runuser --user developer -- env \
+      HOME=/home/developer \
+      CODEX_HOME=/srv/devctl/shared/codex \
+      CLAUDE_CONFIG_DIR=/srv/devctl/shared/claude \
+      herdr integration install codex >/dev/null
+    runuser --user developer -- env \
+      HOME=/home/developer \
+      CODEX_HOME=/srv/devctl/shared/codex \
+      CLAUDE_CONFIG_DIR=/srv/devctl/shared/claude \
+      herdr integration install claude >/dev/null
     exec /usr/local/bin/herdr-server-launch
     ;;
   ccgram)

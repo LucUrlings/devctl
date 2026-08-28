@@ -1,6 +1,17 @@
 .git
 .github
 .venv
+.env
+**/.env
+hub.env
+**/hub.env
+devctl.env
+**/devctl.env
+*.local.env
+**/*.local.env
+secrets
+**/secrets
+**/projects
 **/__pycache__
 **/.pytest_cache
 **/.mypy_cache
@@ -9,4 +20,3 @@
 .pytest_cache
 .mypy_cache
 .ruff_cache
-projects

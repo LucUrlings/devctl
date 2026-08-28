@@ -22,11 +22,13 @@ Setup:
 
 CCGram creates one forum topic for each active Herdr agent tab. Agent first-run prompts may need approval before the topic becomes ready. A bare shell tab is not exposed as a Telegram topic.
 
-Devctl sets `TELEGRAM_AUTOCLOSE_DONE_MINUTES=0` and `TELEGRAM_AUTOCLOSE_DEAD_MINUTES=0`, disabling timer-based topic deletion. This does not keep a topic bound after its Herdr agent exits. Set either value to a positive number of minutes in `hub.env` only when automatic topic deletion is wanted.
+Devctl sets `TELEGRAM_AUTOCLOSE_DONE_MINUTES=0` and `TELEGRAM_AUTOCLOSE_DEAD_MINUTES=0`, disabling timer-based topic deletion. A persistent Herdr wrapper also restarts an unexpectedly exited Codex or Claude CLI and resumes its latest project conversation. During workspace recreation it waits for the container without discarding that resume intent. Set either timer to a positive number of minutes in `hub.env` only when automatic topic deletion is wanted.
+
+On a hub restart, Herdr restores the saved workspace/tab layout and Devctl reconnects those tabs only after each workspace finishes clone/origin validation and becomes healthy. Telegram stays gated until all discovered project panes have reattached successfully. Devctl installs Herdr's official Codex and Claude integration hooks into the shared configuration so resumed conversations retain a stable session identity even though the pane terminal itself was recreated.
 
 ## Recovering an agent topic
 
-Run this on the Docker server when a Codex or Claude topic becomes stale:
+Current sessions should remain bound. Run this once on the Docker server for a topic that was already stale before the persistent wrapper was installed:
 
 ```bash
 ./setup.sh agent <project> codex
@@ -34,7 +36,7 @@ Run this on the Docker server when a Codex or Claude topic becomes stale:
 ./setup.sh agent <project> claude
 ```
 
-This starts the agent through `dev-enter` in the selected workspace repository. CCGram then creates a correctly bound project topic. Use that new topic.
+This starts a persistent agent wrapper in the selected workspace repository. CCGram then creates a correctly bound project topic. If the child CLI later exits unexpectedly, the wrapper uses the tool's supported resume command (`codex resume --last` or `claude --continue`) in the same project. Close its Herdr agent tab when you intentionally want to stop the session; the reconciler does not recreate an intentionally removed tab.
 
 `Select Working Directory` with `Current: /` is CCGram's hub-container directory browser. It means the Telegram topic is unbound; it is not the project workspace. Do not use that browser to recover a Devctl project.
 
