@@ -124,6 +124,17 @@ def is_managed(processes: list[dict[str, Any]], slug: str, label: str) -> bool:
     return False
 
 
+def is_live_agent(pane_id: str, label: str) -> bool:
+    """Accept a live pre-wrapper agent while upgrading an existing deployment."""
+    if label not in AGENTS:
+        return False
+    agents = herdr("agent", "list").get("agents", [])
+    return any(
+        agent.get("pane_id") == pane_id and agent.get("agent") == label
+        for agent in agents
+    )
+
+
 def wait_for(pane_id: str, predicate: Any, seconds: float = 10) -> bool:
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -182,6 +193,12 @@ def ensure_tab(workspace_id: str, label: str) -> str | None:
 def launch(pane_id: str, slug: str, label: str) -> bool:
     processes = foreground(pane_id)
     if is_managed(processes, slug, label):
+        return True
+    # Older releases launched Codex and Claude directly. Preserve a live legacy
+    # process instead of blocking hub readiness or replacing an active session.
+    # When it eventually exits, the next pass sees an idle shell and installs the
+    # persistent dev-session wrapper normally.
+    if is_live_agent(pane_id, label):
         return True
     if not wait_for(pane_id, is_shell):
         log(f"{slug}/{label}: pane is busy with an unmanaged process; leaving it untouched")

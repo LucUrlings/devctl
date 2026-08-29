@@ -660,6 +660,44 @@ class DeploymentTests(unittest.TestCase):
             )
         )
 
+    def test_reconciler_preserves_a_live_pre_wrapper_agent(self) -> None:
+        module = HUB_RECONCILE_MODULE
+        with (
+            mock.patch.object(
+                module,
+                "foreground",
+                return_value=[{"name": "codex", "argv": ["codex"]}],
+            ),
+            mock.patch.object(
+                module,
+                "herdr",
+                return_value={
+                    "agents": [{"pane_id": "w1:p2", "agent": "codex"}]
+                },
+            ) as herdr,
+            mock.patch.object(module, "wait_for") as wait_for,
+            mock.patch.object(module, "run") as run,
+        ):
+            self.assertTrue(module.launch("w1:p2", "project", "codex"))
+        herdr.assert_called_once_with("agent", "list")
+        wait_for.assert_not_called()
+        run.assert_not_called()
+
+    def test_reconciler_still_rejects_an_unknown_busy_process(self) -> None:
+        module = HUB_RECONCILE_MODULE
+        with (
+            mock.patch.object(
+                module,
+                "foreground",
+                return_value=[{"name": "python", "argv": ["python", "server.py"]}],
+            ),
+            mock.patch.object(module, "herdr", return_value={"agents": []}),
+            mock.patch.object(module, "wait_for", return_value=False),
+            mock.patch.object(module, "run") as run,
+        ):
+            self.assertFalse(module.launch("w1:p2", "project", "codex"))
+        run.assert_not_called()
+
     def test_cold_start_waits_for_docker_to_start_known_workspaces(self) -> None:
         module = HUB_RECONCILE_MODULE
 
