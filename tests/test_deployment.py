@@ -211,6 +211,20 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('sys.argv[0] = "/usr/local/bin/ccgram-runtime-launch"', runtime)
         self.assertIn("ccgram-runtime-launch run", ccgram_launch)
 
+    def test_hub_repairs_persisted_agent_directory_ownership(self) -> None:
+        entrypoint = (
+            ROOT / "images/hub/rootfs/usr/local/bin/hub-entrypoint"
+        ).read_text()
+        self.assertIn("prepare_developer_dirs()", entrypoint)
+        self.assertIn('chown -R developer:developer -- "$@"', entrypoint)
+        for path in (
+            "/srv/devctl/shared/codex",
+            "/srv/devctl/shared/claude",
+            "/srv/devctl/shared/gh",
+            "/srv/devctl/ccgram",
+        ):
+            self.assertIn(path, entrypoint)
+
     def test_setup_has_only_the_small_workflow(self) -> None:
         result = subprocess.run(
             [str(ROOT / "deploy/setup.sh"), "help"],

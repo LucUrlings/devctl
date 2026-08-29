@@ -3,10 +3,18 @@ set -euo pipefail
 umask 077
 
 mode=${1:-herdr}
+
+prepare_developer_dirs() {
+  install -d -o developer -g developer -m 0700 "$@"
+  # Older images and host-side setup may have created nested files as root.
+  # The agent CLIs and hook installers always run as developer.
+  chown -R developer:developer -- "$@"
+}
+
 case "$mode" in
   herdr)
     install -d -m 0755 /srv/devctl/herdr /srv/devctl/herdr/run
-    install -d -o developer -g developer -m 0700 \
+    prepare_developer_dirs \
       /srv/devctl/shared/codex /srv/devctl/shared/claude /srv/devctl/shared/gh
     # Official Herdr hooks publish stable native session IDs. CCGram uses those
     # IDs to keep Telegram bindings stable when Herdr recreates pane terminals.
@@ -44,7 +52,7 @@ case "$mode" in
       echo "hub-entrypoint: Telegram bot token file must have mode 0600" >&2
       exit 2
     }
-    install -d -o developer -g developer -m 0700 \
+    prepare_developer_dirs \
       /srv/devctl/ccgram /srv/devctl/shared/codex /srv/devctl/shared/claude
     runuser --user developer -- env \
       HOME=/home/developer \
