@@ -30,20 +30,15 @@ jobs:
         with:
           python-version: "3.14"
       - name: Run focused unit tests
-        run: |
-          python -m unittest discover -s tests -v
-          python -m py_compile images/hub/rootfs/usr/local/bin/hub-reconcile
-          python -m py_compile images/hub/rootfs/usr/local/bin/ccgram-runtime
+        run: python -m unittest discover -s tests -v
       - name: Run ShellCheck
         run: >-
           docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0
           scripts/*.sh images/common/*.sh
           images/hub/rootfs/usr/local/bin/dev-enter
-          images/hub/rootfs/usr/local/bin/dev-session
           images/hub/rootfs/usr/local/bin/hub-entrypoint
           images/hub/rootfs/usr/local/bin/herdr-server-launch
           images/hub/rootfs/usr/local/bin/ccgram-launch
-          images/hub/rootfs/usr/local/bin/ccgram-runtime-launch
           images/hub/rootfs/usr/local/bin/hub-healthcheck
           images/hub/rootfs/usr/local/bin/image-versions
           images/workspace/rootfs/usr/local/bin/image-versions

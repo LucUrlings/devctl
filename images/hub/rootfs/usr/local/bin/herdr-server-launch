@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ready_path=${DEVCTL_RECONCILED_PATH:-/run/devctl-herdr-reconciled}
-rm -f -- "$ready_path"
 herdr server &
 pid=$!
-reconciler_pid=''
 # Called indirectly by the signal traps below.
 # shellcheck disable=SC2329
 terminate() {
   kill -TERM "$pid" 2>/dev/null || true
-  [[ -z $reconciler_pid ]] || kill -TERM "$reconciler_pid" 2>/dev/null || true
 }
 trap terminate TERM INT
 socket_ready=false
@@ -30,20 +26,4 @@ if [[ "$socket_ready" != true ]]; then
   wait "$pid" || true
   exit 1
 fi
-/usr/local/bin/hub-reconcile --watch &
-reconciler_pid=$!
-status=0
-while kill -0 "$pid" 2>/dev/null && kill -0 "$reconciler_pid" 2>/dev/null; do
-  sleep 1
-done
-if kill -0 "$pid" 2>/dev/null && ! kill -0 "$reconciler_pid" 2>/dev/null; then
-  echo "herdr-server-launch: reconciler exited unexpectedly" >&2
-  status=1
-  kill -TERM "$pid" 2>/dev/null || true
-fi
-herdr_status=0
-wait "$pid" 2>/dev/null || herdr_status=$?
-[[ $status -ne 0 ]] || status=$herdr_status
-kill -TERM "$reconciler_pid" 2>/dev/null || true
-wait "$reconciler_pid" 2>/dev/null || true
-exit "$status"
+wait "$pid"

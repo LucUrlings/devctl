@@ -2,15 +2,11 @@
 
 test:
 	python3 -m unittest discover -s tests -v
-	python3 -m py_compile images/hub/rootfs/usr/local/bin/hub-reconcile
-	python3 -m py_compile images/hub/rootfs/usr/local/bin/ccgram-runtime
 
 lint:
 	shellcheck scripts/*.sh images/common/*.sh \
 		images/hub/rootfs/usr/local/bin/ccgram-launch \
-		images/hub/rootfs/usr/local/bin/ccgram-runtime-launch \
 		images/hub/rootfs/usr/local/bin/dev-enter \
-		images/hub/rootfs/usr/local/bin/dev-session \
 		images/hub/rootfs/usr/local/bin/herdr-server-launch \
 		images/hub/rootfs/usr/local/bin/hub-entrypoint \
 		images/hub/rootfs/usr/local/bin/hub-healthcheck \

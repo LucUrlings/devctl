@@ -1,47 +1,55 @@
 # Devctl
 
-Docker workspaces with code-server, VS Code SSH, Herdr, Codex, Claude, and optional Telegram control.
+Docker workspaces with code-server, VS Code SSH, Herdr, Codex, Claude, and optional Telegram access.
 
-## Quick start
+## TLDR
 
-Run on the Docker server. Download the setup script first:
-
-Requires Docker Compose plus an existing Traefik network and OAuth middleware. Point wildcard DNS for `*.code.<base-domain>` and `*.dev.<base-domain>` at the server.
+Run on the Docker server:
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/setup.sh?$(date +%s)" -o setup.sh
 chmod +x setup.sh
-```
 
-Then run:
-
-```bash
-./setup.sh install --agent codex \
+./setup.sh install \
   --base-domain <base-domain> \
   --traefik-network <traefik-network> \
   --auth-middleware <oauth-middleware>
-./setup.sh create <repo>
-```
 
-The first command starts the hub. The second safely clones a repository, starts its workspace, creates its Herdr tabs, starts the agent, and prints URLs plus SSH config. Repeat `./setup.sh create <repo>` for more projects.
-
-The preview route uses port `3000` by default. Pass the port your frontend listens on when it differs:
-
-```bash
+./setup.sh login github
+./setup.sh login codex
 ./setup.sh create <repo> --preview-port <port>
+./setup.sh agent <project> codex
 ```
 
-The development server must listen on `0.0.0.0:<port>` inside the workspace. A server bound only to `localhost` cannot be reached by Traefik.
-
-Open the printed code-server URL on your phone. Add the printed SSH block to your laptop’s `~/.ssh/config`, then use `ssh dev-<project>` or VS Code Remote SSH and open `/workspace/project`.
+Open the printed `https://<project>.code.<base-domain>` URL from a phone or browser.
 
 ## How it works
 
-One hub runs the only Herdr server and optional CCGram. Each repository gets an isolated workspace. Workspaces persist the checkout, SSH host keys, VS Code server, and shared credentials.
+The hub runs one Herdr server and, optionally, one stock CCGram process. Each repository gets one isolated workspace containing code-server, SSH, Codex, Claude, GitHub CLI, Herdr, Docker CLI, Node.js, and Python.
 
-Traefik routes `<project>.code.<base-domain>` to code-server (`8080`) and `<project>.dev.<base-domain>` to preview (`3000` by default). Both use TLS and the configured OAuth middleware; neither HTTP port is published publicly.
+`./setup.sh create <repo>` clones and starts a workspace. It does not start an agent. Start one explicitly:
 
-Inside the workspace and its Codex/Claude sessions, `DEVCTL_CODE_URL` and `DEVCTL_PREVIEW_URL` contain those exact URLs.
+```bash
+./setup.sh agent <project> codex
+./setup.sh agent <project> claude
+./setup.sh agent <project> shell
+```
+
+The command creates or reuses a matching Herdr tab and runs one process in the project repository, which is also available at `/workspace/project`. CCGram discovers active Codex and Claude panes using its upstream Herdr backend.
+
+There is no custom CCGram patch, prompt relay, background reconciler, or automatic agent restart. If an agent exits, its topic ends. Start it again explicitly with `./setup.sh agent <project> codex|claude`.
+
+## Requirements and routes
+
+- Linux Docker server with Docker Compose
+- Existing Traefik network and OAuth middleware
+- Wildcard DNS for `*.code.<base-domain>` and `*.dev.<base-domain>`
+
+Traefik routes `<project>.code.<base-domain>` to code-server on `8080` and `<project>.dev.<base-domain>` to the preview port. Both use TLS and OAuth; neither HTTP port is published on the host.
+
+The preview server must listen on `0.0.0.0:<port>` inside the workspace. Port `3000` is the default; pass `--preview-port <port>` when the project uses another port.
+
+Agents can read the exact routes from `DEVCTL_CODE_URL` and `DEVCTL_PREVIEW_URL`.
 
 ## Authentication
 
@@ -51,55 +59,69 @@ Inside the workspace and its Codex/Claude sessions, `DEVCTL_CODE_URL` and `DEVCT
 ./setup.sh login claude
 ```
 
-Credentials are shared from `/srv/devctl/shared`; use this only with trusted workspaces.
+Credentials persist under `/srv/devctl/shared` and are available to every trusted workspace.
 
 ## Telegram (optional)
 
-CCGram connects Telegram to the existing Herdr server. Create a BotFather bot, enable forum topics in a private supergroup, and add the bot as an administrator with **Manage Topics**. Disable the bot's Group Privacy in BotFather, then collect allowed numeric user IDs plus the `-100...` group ID:
+1. Create a bot with BotFather.
+2. Create a private Telegram supergroup and enable Topics.
+3. Disable Group Privacy for the bot in BotFather.
+4. Add the bot as an administrator with permission to manage topics.
+5. Obtain the allowed numeric user IDs and the group ID beginning with `-100`.
+6. Put the token in a temporary file and run `chmod 600 <bot-token-file>`.
+7. Run:
 
 ```bash
-./setup.sh telegram --token-file <bot-token-file> \
-  --allowed-users <user-id>[,<user-id>] --group-id <-100-supergroup-id>
+./setup.sh telegram \
+  --token-file <bot-token-file> \
+  --allowed-users <user-id>[,<user-id>] \
+  --group-id <-100-supergroup-id>
 ```
 
-Keep the token file mode `0600`. Telegram uses long polling and an explicit allowlist. Automatic done/dead topic deletion is disabled. Devctl also keeps the Herdr session wrapper alive: if Codex or Claude exits unexpectedly, it restarts and resumes the latest conversation in that project instead of leaving the Telegram topic at `/`. If a workspace is temporarily stopped or recreated, the wrapper waits for it and keeps resume mode instead of opening a fresh conversation.
+Without this command, Telegram is not started and no Telegram configuration is required.
 
-After a hub-container restart or full server reboot, the hub automatically reconnects restored Herdr shell and agent tabs. Agent entry waits for each workspace to finish clone/origin validation and become healthy; Telegram remains gated until every discovered project has reattached successfully. Codex and Claude then resume their latest project conversation before Telegram begins tracking the restored sessions. Official Herdr hooks publish stable agent-session identities so CCGram can retain the existing topic binding across a recreated pane terminal.
+## SSH and VS Code
 
-CCGram automatically creates one topic per active Herdr agent. Codex or Claude may show first-run update, repository-trust, or hook-trust prompts before the topic becomes ready; review those prompts rather than automatically accepting them.
-
-For an older topic that was already stale before this behavior was installed, recover it once on the Docker server:
+`create` prints a `Host dev-<project>` block. Add it to the laptop’s `~/.ssh/config`, configure its `ProxyJump` server alias, then run:
 
 ```bash
-./setup.sh agent <project> codex
+ssh dev-<project>
 ```
 
-Use the newly created project topic. A Telegram screen showing `Select Working Directory` with `Current: /` means the topic is unbound and browsing inside the hub container; do not use it to start a project agent. Run `/sync` in Telegram and choose **Fix** to remove stale metadata, recreate a deleted topic for a live agent, or adopt a live unbound agent.
+VS Code Remote SSH should open `/workspace/project`. Repository data, SSH host keys, and `/home/developer/.vscode-server` persist across recreation, so disconnecting does not stop the workspace.
 
-If Telegram shows the entire Codex terminal, repeats your prompt with a `👤` prefix, or reports `SessionStart hook (failed) ... code 127`, run `./setup.sh update` and then `./setup.sh agent <project> codex`. The update restores the native Herdr session hook and atomic Telegram prompt delivery.
-
-## Docker access
-
-Every workspace has Docker CLI and the host Docker socket, so its agent can start development containers. Docker socket access is effectively root access to the server: only create workspaces for repositories and agents you trust.
-
-The checkout is mounted at the same `/srv/devctl/projects/<project>/repo` path on the host and in the workspace, allowing relative bind mounts from nested Compose projects to work. `/workspace/project` remains a compatibility link for VS Code and SSH.
-
-## Operations and backups
+## Operations
 
 ```bash
 ./setup.sh list
-./setup.sh update              # Update hub and every workspace
-./setup.sh update <project>    # Update one workspace; leave the hub unchanged
+./setup.sh update
+./setup.sh update <project>
 ./setup.sh agent <project> codex
-./setup.sh teardown <project>  # Stop one project and close its live Herdr workspace
-./setup.sh teardown --all      # Remove all containers, including the hub
-docker compose --env-file hub.env -f hub.compose.yml logs -f
+./setup.sh teardown <project>
+./setup.sh teardown --all
 ```
 
-After confirming the folder was installed, update refreshes `setup.sh` and the deployment bundle. Update and teardown preserve repositories, shared credentials, SSH host keys, VS Code state, project env files, and agent conversation history. Single-project teardown also closes that project's live Herdr workspace so it cannot keep retrying against a stopped container; `./setup.sh agent <project> codex|claude|shell` recreates it later. Update pauses Telegram, recreates the requested containers, restores each configured agent in its existing Herdr tab, and then resumes Telegram.
+`update` refreshes `setup.sh`, Compose files, and images. It deliberately does not start or resume agents.
 
-Codex and Claude may update themselves when you accept their update prompts. CCGram's Telegram `/upgrade` command also updates CCGram and restarts only the bot; Herdr and agent sessions remain running. Codex, Claude, CCGram, GitHub CLI, and the workspace Herdr CLI are installed under the non-root `developer` user. In-container changes survive normal restarts; recreating a container uses the pinned versions from the newly pulled image. The central Herdr server remains image-managed and is upgraded by `./setup.sh update`.
+### Clean session reset
+
+After upgrading from a version that used automatic session recovery, reset old bindings once:
+
+```bash
+./setup.sh update
+./setup.sh reset-sessions
+./setup.sh agent <project> codex
+```
+
+`reset-sessions` requires typing `RESET`. It archives Herdr and CCGram state under `/srv/devctl/backups`, then recreates the hub and workspaces so their session mounts point at the fresh state. It does not modify repositories, credentials, project configuration, SSH keys, or secrets. Delete obsolete Telegram topics manually after the new topic works.
+
+## Security and backups
+
+Every workspace receives `/var/run/docker.sock`, which is effectively root access to the server. Use only trusted repositories and agents. The hub also needs the socket to enter labeled workspaces.
 
 Back up `/srv/devctl/projects`, `/srv/devctl/shared`, `/srv/devctl/herdr`, `/srv/devctl/ccgram`, `/srv/devctl/ssh`, and `/srv/devctl/secrets`.
 
-Images: `ghcr.io/lucurlings/devctl-hub:latest` and `ghcr.io/lucurlings/devctl-workspace:latest` (amd64/arm64).
+Images:
+
+- `ghcr.io/lucurlings/devctl-hub:latest`
+- `ghcr.io/lucurlings/devctl-workspace:latest`

@@ -6,11 +6,10 @@ case ${1:-herdr} in
     docker version >/dev/null
     herdr status server >/dev/null
     [[ -S ${HERDR_SOCKET_PATH:?} ]]
-    [[ -f ${DEVCTL_RECONCILED_PATH:-/run/devctl-herdr-reconciled} ]]
     ;;
   ccgram)
     [[ -S ${HERDR_SOCKET_PATH:?} ]]
-    pgrep -f '(^|/)ccgram-runtime run($| )' >/dev/null
+    pgrep -f '(^|/)ccgram($| )' >/dev/null
     ;;
   *) exit 2 ;;
 esac

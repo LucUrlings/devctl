@@ -112,11 +112,8 @@ RUN rm -rf /usr/local/lib/node_modules/npm \
     && rm /tmp/ccgram-constraint.txt
 
 COPY images/hub/rootfs/ /
-RUN chmod 0755 /usr/local/bin/dev-enter /usr/local/bin/dev-session \
-      /usr/local/bin/hub-reconcile \
-      /usr/local/bin/hub-entrypoint \
+RUN chmod 0755 /usr/local/bin/dev-enter /usr/local/bin/hub-entrypoint \
       /usr/local/bin/herdr-server-launch /usr/local/bin/ccgram-launch \
-      /usr/local/bin/ccgram-runtime /usr/local/bin/ccgram-runtime-launch \
       /usr/local/bin/hub-healthcheck /usr/local/bin/image-versions
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hub-entrypoint"]

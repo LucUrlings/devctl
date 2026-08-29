@@ -1,56 +1,55 @@
 # Optional Telegram profile
 
-Telegram is absent from the default deployment. Running Compose without `--profile telegram` starts only Herdr and does not inspect or require Telegram configuration.
+Telegram is disabled by default. The hub starts without a bot token, Telegram IDs, or CCGram state.
 
-CCGram starts only with all three values:
-
-- `/srv/devctl/secrets/telegram-bot-token`: BotFather token, file mode `0600`
-- `TELEGRAM_ALLOWED_USERS`: comma-separated numeric user IDs
-- `TELEGRAM_GROUP_ID`: forum supergroup ID beginning with `-100`
-
-Setup:
+## Setup
 
 1. Create a bot with BotFather.
 2. Create a private supergroup and enable Topics.
-3. In BotFather, enable groups and disable Group Privacy for the bot.
-4. Add the bot to the supergroup as an administrator and enable **Manage Topics**.
-5. Obtain each allowed user's numeric ID.
+3. In BotFather, allow groups and disable Group Privacy.
+4. Add the bot as an administrator with permission to manage topics.
+5. Obtain each allowed user’s numeric ID.
 6. Obtain the supergroup ID beginning with `-100`.
-7. Write only the token to a temporary file and set its mode to `0600`.
-8. Run `./setup.sh telegram --allowed-users <ids> --group-id <-100-id> --token-file <file>`.
-9. Delete the temporary input file after the helper copies it into `/srv/devctl/secrets` and starts the profile.
+7. Save only the token in a temporary file and set mode `0600`.
+8. Run:
 
-CCGram creates one forum topic for each active Herdr agent tab. Agent first-run prompts may need approval before the topic becomes ready. A bare shell tab is not exposed as a Telegram topic.
+```bash
+./setup.sh telegram \
+  --token-file <bot-token-file> \
+  --allowed-users <user-id>[,<user-id>] \
+  --group-id <-100-supergroup-id>
+```
 
-Devctl sets `TELEGRAM_AUTOCLOSE_DONE_MINUTES=0` and `TELEGRAM_AUTOCLOSE_DEAD_MINUTES=0`, disabling timer-based topic deletion. A persistent Herdr wrapper also restarts an unexpectedly exited Codex or Claude CLI and resumes its latest project conversation. During workspace recreation it waits for the container without discarding that resume intent. Set either timer to a positive number of minutes in `hub.env` only when automatic topic deletion is wanted.
+The helper copies the token to `/srv/devctl/secrets/telegram-bot-token`, validates the settings, and starts the `telegram` Compose profile using long polling.
 
-On a hub restart, Herdr restores the saved workspace/tab layout and Devctl reconnects those tabs only after each workspace finishes clone/origin validation and becomes healthy. Telegram stays gated until all discovered project panes have reattached successfully. Devctl installs Herdr's official Codex and Claude integration hooks into the shared configuration so resumed conversations retain a stable session identity even though the pane terminal itself was recreated.
+## Agent topics
 
-## Recovering an agent topic
-
-Current sessions should remain bound. Run this once on the Docker server for a topic that was already stale before the persistent wrapper was installed:
+Start agents explicitly:
 
 ```bash
 ./setup.sh agent <project> codex
-# or
 ./setup.sh agent <project> claude
 ```
 
-This starts a persistent agent wrapper in the selected workspace repository. CCGram then creates a correctly bound project topic. If the child CLI later exits unexpectedly, the wrapper uses the tool's supported resume command (`codex resume --last` or `claude --continue`) in the same project. Close its Herdr agent tab when you intentionally want to stop the session; the reconciler does not recreate an intentionally removed tab.
+CCGram’s upstream Herdr backend discovers the active pane and creates its topic. Devctl does not intercept prompts, patch CCGram internals, restart exited agents, or reconnect stale bindings.
 
-`Select Working Directory` with `Current: /` is CCGram's hub-container directory browser. It means the Telegram topic is unbound; it is not the project workspace. Do not use that browser to recover a Devctl project.
+If an agent ends, start it again with the same command. `Select Working Directory` at `/` is CCGram’s hub-container browser, not the project workspace.
 
-`/sync` audits CCGram state. Choosing **Fix** removes stale metadata, recreates a deleted topic for a live agent, and adopts live unbound agents. A manually created topic can also bind an unbound agent: send a normal message in it and choose the agent from **Bind to Existing Window**.
+## Resetting old bindings
 
-Use `/upgrade` in Telegram to update CCGram. It restarts only the Telegram bot; Herdr and agent processes remain running. The upgrade survives normal container restarts. Recreating the hub container restores the version pinned in its newly pulled image.
+When moving from a version that used automatic session recovery:
 
-If a topic shows the entire Codex terminal, repeats your prompt with a `👤` prefix, or reports `SessionStart hook (failed)` with exit code `127`, run `./setup.sh update` followed by `./setup.sh agent <project> codex`. This updates CCGram's Herdr bridge, restores the shared native session hook, and starts a correctly identified session.
+```bash
+./setup.sh update
+./setup.sh reset-sessions
+./setup.sh agent <project> codex
+```
 
-Inspect it with:
+The reset archives only Herdr and CCGram state under `/srv/devctl/backups`, then recreates the containers so their session mounts use the fresh state. Repositories, credentials, project configuration, SSH data, and secrets remain untouched. Delete obsolete Telegram topics manually after the new one works.
+
+## Status and logs
 
 ```bash
 docker compose --profile telegram --env-file hub.env -f hub.compose.yml ps
 docker compose --profile telegram --env-file hub.env -f hub.compose.yml logs -f telegram
 ```
-
-The service validates the allowlist, group ID, token file, and `CCGRAM_MULTIPLEXER=herdr` before starting. It uses the central Herdr socket and long polling; it receives no Docker socket or inbound network port.
