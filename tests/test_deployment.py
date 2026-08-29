@@ -438,6 +438,13 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("TELEGRAM_AUTOCLOSE_DONE_MINUTES:-0", HUB)
         self.assertIn("TELEGRAM_AUTOCLOSE_DEAD_MINUTES:-0", HUB)
 
+    def test_telegram_healthcheck_tracks_the_compatibility_runtime(self) -> None:
+        healthcheck = (
+            ROOT / "images/hub/rootfs/usr/local/bin/hub-healthcheck"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ccgram-runtime run", healthcheck)
+        self.assertNotIn("'(^|/)ccgram run($| )'", healthcheck)
+
     def test_agent_pane_uses_persistent_resuming_session(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
         self.assertIn('"exec dev-session $project $agent $mode"', helper)

@@ -10,7 +10,7 @@ case ${1:-herdr} in
     ;;
   ccgram)
     [[ -S ${HERDR_SOCKET_PATH:?} ]]
-    pgrep -f '(^|/)ccgram run($| )' >/dev/null
+    pgrep -f '(^|/)ccgram-runtime run($| )' >/dev/null
     ;;
   *) exit 2 ;;
 esac
