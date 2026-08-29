@@ -485,9 +485,13 @@ update_cmd() {
   prepare_projects_dir
 
   local -a files=()
-  local file name agent hub_container restart_telegram=false update_hub=false
-  if [[ -n $(compose_hub --profile telegram ps --status running --quiet telegram 2>/dev/null) ]]; then
-    compose_hub --profile telegram stop telegram
+  local file name agent hub_container telegram_container telegram_status='' restart_telegram=false update_hub=false
+  telegram_container=$(compose_hub --profile telegram ps --all --quiet telegram 2>/dev/null || true)
+  if [[ -n $telegram_container ]]; then
+    telegram_status=$(docker inspect --format '{{.State.Status}}' "$telegram_container" 2>/dev/null || true)
+  fi
+  if [[ $telegram_status == running || $telegram_status == created ]]; then
+    [[ $telegram_status != running ]] || compose_hub --profile telegram stop telegram
     restart_telegram=true
     trap 'if [[ ${restart_telegram:-false} == true ]]; then compose_hub --profile telegram up -d telegram >/dev/null 2>&1 || true; fi' EXIT
   fi
