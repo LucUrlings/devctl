@@ -132,6 +132,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("compose_hub --profile telegram stop telegram", update)
         self.assertIn("compose_hub --profile telegram start telegram", update)
         self.assertNotIn("start_project_agent", update)
+        self.assertNotIn("prepare_shared_dirs", update)
 
     def test_stateful_commands_check_installation_before_doing_work(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

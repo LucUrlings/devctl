@@ -453,7 +453,6 @@ update_cmd() {
   ensure_bundle true
   load_config
   prepare_projects_dir
-  prepare_shared_dirs
 
   local -a files=()
   local file name hub_container telegram_container telegram_status='' restart_telegram=false update_hub=false
