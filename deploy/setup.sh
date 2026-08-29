@@ -504,8 +504,9 @@ update_cmd() {
   if [[ -n $telegram_container ]]; then
     telegram_status=$(docker inspect --format '{{.State.Status}}' "$telegram_container" 2>/dev/null || true)
   fi
-  if [[ $telegram_status == running || $telegram_status == created ]]; then
-    [[ $telegram_status != running ]] || compose_hub --profile telegram stop telegram
+  if [[ $telegram_status == running || $telegram_status == created || $telegram_status == restarting ]]; then
+    [[ $telegram_status != running && $telegram_status != restarting ]] || \
+      compose_hub --profile telegram stop telegram
     restart_telegram=true
     trap 'if [[ ${restart_telegram:-false} == true ]]; then compose_hub --profile telegram up -d telegram >/dev/null 2>&1 || true; fi' EXIT
   fi

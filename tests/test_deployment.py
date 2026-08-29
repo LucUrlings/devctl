@@ -386,8 +386,13 @@ class DeploymentTests(unittest.TestCase):
     def test_project_update_does_not_upgrade_or_restart_a_stopped_hub_profile(self) -> None:
         helper = (ROOT / "deploy/setup.sh").read_text(encoding="utf-8")
         self.assertIn("ps --all --quiet telegram", helper)
-        self.assertIn("telegram_status == running || $telegram_status == created", helper)
-        self.assertIn('[[ $telegram_status != running ]] || compose_hub --profile telegram stop telegram', helper)
+        self.assertIn(
+            "telegram_status == running || $telegram_status == created || "
+            "$telegram_status == restarting",
+            helper,
+        )
+        self.assertIn('$telegram_status != restarting', helper)
+        self.assertIn('compose_hub --profile telegram stop telegram', helper)
         self.assertIn('compose_hub --profile telegram start telegram', helper)
         self.assertIn('compose_hub start herdr', helper)
         self.assertIn('compose_hub up -d --pull missing herdr', helper)
