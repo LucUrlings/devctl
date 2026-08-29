@@ -184,6 +184,7 @@ class DeploymentTests(unittest.TestCase):
 
     def test_user_facing_cli_installations_are_developer_owned(self) -> None:
         dockerfile = (ROOT / "images/workspace/Dockerfile").read_text()
+        hub_dockerfile = (ROOT / "images/hub/Dockerfile").read_text()
         self.assertIn("NPM_CONFIG_PREFIX=/home/developer/.local", dockerfile)
         self.assertIn("@anthropic-ai/claude-code", dockerfile)
         self.assertIn(
@@ -192,6 +193,23 @@ class DeploymentTests(unittest.TestCase):
         )
         self.assertIn("GH_INSTALL_DIR=/home/developer/.local/bin", dockerfile)
         self.assertIn("chown -R developer:developer /home/developer/.local", dockerfile)
+        for source in (dockerfile, hub_dockerfile):
+            self.assertIn("uv tool install", source)
+            self.assertIn("/ccgram/uv-receipt.toml", source)
+            self.assertNotIn('"ccgram==${CCGRAM_VERSION}" \\\n+      "msgpack==', source)
+
+    def test_ccgram_upgrade_restarts_in_its_uv_tool_environment(self) -> None:
+        launcher = (
+            ROOT / "images/hub/rootfs/usr/local/bin/ccgram-runtime-launch"
+        ).read_text(encoding="utf-8")
+        runtime = CCGRAM_RUNTIME_PATH.read_text(encoding="utf-8")
+        ccgram_launch = (
+            ROOT / "images/hub/rootfs/usr/local/bin/ccgram-launch"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ccgram/bin/python", launcher)
+        self.assertIn("import sys", runtime)
+        self.assertIn('sys.argv[0] = "/usr/local/bin/ccgram-runtime-launch"', runtime)
+        self.assertIn("ccgram-runtime-launch run", ccgram_launch)
 
     def test_setup_has_only_the_small_workflow(self) -> None:
         result = subprocess.run(

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+tool_dir=${UV_TOOL_DIR:-/home/developer/.local/share/uv/tools}
+tool_python=$tool_dir/ccgram/bin/python
+if [[ ! -x $tool_python ]]; then
+  echo "ccgram-runtime-launch: CCGram uv environment is missing" >&2
+  exit 1
+fi
+
+exec "$tool_python" /usr/local/bin/ccgram-runtime "$@"

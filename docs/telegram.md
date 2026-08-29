@@ -40,7 +40,9 @@ This starts a persistent agent wrapper in the selected workspace repository. CCG
 
 `Select Working Directory` with `Current: /` is CCGram's hub-container directory browser. It means the Telegram topic is unbound; it is not the project workspace. Do not use that browser to recover a Devctl project.
 
-`/sync` audits CCGram state. Choosing **Fix** removes stale bindings and may close their old Telegram topics. It is a cleanup command, not a reconnection command.
+`/sync` audits CCGram state. Choosing **Fix** removes stale metadata, recreates a deleted topic for a live agent, and adopts live unbound agents. A manually created topic can also bind an unbound agent: send a normal message in it and choose the agent from **Bind to Existing Window**.
+
+Use `/upgrade` in Telegram to update CCGram. It restarts only the Telegram bot; Herdr and agent processes remain running. The upgrade survives normal container restarts. Recreating the hub container restores the version pinned in its newly pulled image.
 
 If a topic shows the entire Codex terminal, repeats your prompt with a `👤` prefix, or reports `SessionStart hook (failed)` with exit code `127`, run `./setup.sh update` followed by `./setup.sh agent <project> codex`. This updates CCGram's Herdr bridge, restores the shared native session hook, and starts a correctly identified session.
 

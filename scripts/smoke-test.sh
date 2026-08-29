@@ -12,6 +12,10 @@ for image in "$hub_image" "$workspace_image"; do
   docker run --rm --entrypoint sh "$image" -c '
     test ! -e /usr/local/lib/node_modules/npm
     test "$(command -v npm)" = /home/developer/.local/bin/npm
+    test "$(command -v ccgram)" = /home/developer/.local/bin/ccgram
+    test -x /home/developer/.local/share/uv/tools/ccgram/bin/python
+    ! grep -q "^constraints = " /home/developer/.local/share/uv/tools/ccgram/uv-receipt.toml
+    /home/developer/.local/share/uv/tools/ccgram/bin/python -c "import ccgram, msgpack"
   '
 done
 docker run --rm --entrypoint sh "$workspace_image" -c '

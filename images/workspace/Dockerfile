@@ -27,6 +27,8 @@ FROM python:${PYTHON_VERSION}-slim-trixie
 # installation prefix developer-owned so accepting an update can never require
 # changing image-owned system files.
 ENV NPM_CONFIG_PREFIX=/home/developer/.local \
+    UV_TOOL_BIN_DIR=/home/developer/.local/bin \
+    UV_TOOL_DIR=/home/developer/.local/share/uv/tools \
     PATH=/home/developer/.local/bin:${PATH}
 
 ARG TARGETARCH
@@ -123,11 +125,18 @@ RUN rm -rf /usr/local/lib/node_modules/npm \
        /tmp/install-release-tools.sh \
     && rm /tmp/install-release-tools.sh \
     && chown -R developer:developer /home/developer/.local \
-    && uv pip install --system --no-cache \
-      "ccgram==${CCGRAM_VERSION}" \
-      "msgpack==${MSGPACK_VERSION}" \
-      "pipx==${PIPX_VERSION}" \
-      "setuptools==${SETUPTOOLS_VERSION}" \
+    && printf 'ccgram==%s\n' "${CCGRAM_VERSION}" > /tmp/ccgram-constraint.txt \
+    && runuser --user developer -- env HOME=/home/developer \
+      uv tool install --python /usr/local/bin/python3 --no-python-downloads \
+      --constraint /tmp/ccgram-constraint.txt \
+      --with "msgpack==${MSGPACK_VERSION}" \
+      --with "setuptools==${SETUPTOOLS_VERSION}" \
+      ccgram \
+    # Keep the deterministic initial version while allowing CCGram's supported
+    # `uv tool upgrade ccgram` command to select a newer release at runtime.
+    && sed -i '/^constraints = /d' "${UV_TOOL_DIR}/ccgram/uv-receipt.toml" \
+    && rm /tmp/ccgram-constraint.txt \
+    && uv pip install --system --no-cache "pipx==${PIPX_VERSION}" \
     && case "$TARGETARCH" in \
          amd64) cs_arch=amd64; cs_sha="$CODE_SERVER_AMD64_SHA256" ;; \
          arm64) cs_arch=arm64; cs_sha="$CODE_SERVER_ARM64_SHA256" ;; \

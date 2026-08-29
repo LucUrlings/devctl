@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import sys
 from typing import Any
 
 
@@ -86,4 +87,7 @@ if __name__ == "__main__":
     install()
     from ccgram.main import main
 
+    # CCGram restarts after /upgrade by exec'ing argv[0]. Route that restart
+    # through the launcher so it selects the newly upgraded uv environment.
+    sys.argv[0] = "/usr/local/bin/ccgram-runtime-launch"
     main()

@@ -8,6 +8,7 @@ test:
 lint:
 	shellcheck scripts/*.sh images/common/*.sh \
 		images/hub/rootfs/usr/local/bin/ccgram-launch \
+		images/hub/rootfs/usr/local/bin/ccgram-runtime-launch \
 		images/hub/rootfs/usr/local/bin/dev-enter \
 		images/hub/rootfs/usr/local/bin/dev-session \
 		images/hub/rootfs/usr/local/bin/herdr-server-launch \

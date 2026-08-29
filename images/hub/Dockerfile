@@ -25,6 +25,8 @@ FROM python:${PYTHON_VERSION}-slim-trixie
 # Login commands run as developer. Keep agent CLIs in its writable npm prefix;
 # the central Herdr server itself remains an image-managed system binary.
 ENV NPM_CONFIG_PREFIX=/home/developer/.local \
+    UV_TOOL_BIN_DIR=/home/developer/.local/bin \
+    UV_TOOL_DIR=/home/developer/.local/share/uv/tools \
     PATH=/home/developer/.local/bin:${PATH}
 
 ARG TARGETARCH
@@ -97,17 +99,24 @@ RUN rm -rf /usr/local/lib/node_modules/npm \
     && GH_INSTALL_DIR=/home/developer/.local/bin /tmp/install-release-tools.sh \
     && rm /tmp/install-release-tools.sh \
     && chown -R developer:developer /home/developer/.local \
-    && uv pip install --system --no-cache \
-      "ccgram==${CCGRAM_VERSION}" \
-      "msgpack==${MSGPACK_VERSION}" \
-      "setuptools==${SETUPTOOLS_VERSION}"
+    && printf 'ccgram==%s\n' "${CCGRAM_VERSION}" > /tmp/ccgram-constraint.txt \
+    && runuser --user developer -- env HOME=/home/developer \
+      uv tool install --python /usr/local/bin/python3 --no-python-downloads \
+      --constraint /tmp/ccgram-constraint.txt \
+      --with "msgpack==${MSGPACK_VERSION}" \
+      --with "setuptools==${SETUPTOOLS_VERSION}" \
+      ccgram \
+    # Keep the deterministic initial version while allowing CCGram's supported
+    # `uv tool upgrade ccgram` command to select a newer release at runtime.
+    && sed -i '/^constraints = /d' "${UV_TOOL_DIR}/ccgram/uv-receipt.toml" \
+    && rm /tmp/ccgram-constraint.txt
 
 COPY images/hub/rootfs/ /
 RUN chmod 0755 /usr/local/bin/dev-enter /usr/local/bin/dev-session \
       /usr/local/bin/hub-reconcile \
       /usr/local/bin/hub-entrypoint \
       /usr/local/bin/herdr-server-launch /usr/local/bin/ccgram-launch \
-      /usr/local/bin/ccgram-runtime \
+      /usr/local/bin/ccgram-runtime /usr/local/bin/ccgram-runtime-launch \
       /usr/local/bin/hub-healthcheck /usr/local/bin/image-versions
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hub-entrypoint"]
