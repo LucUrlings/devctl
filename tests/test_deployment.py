@@ -215,8 +215,11 @@ class DeploymentTests(unittest.TestCase):
         entrypoint = (
             ROOT / "images/hub/rootfs/usr/local/bin/hub-entrypoint"
         ).read_text()
+        setup = (ROOT / "deploy/setup.sh").read_text()
         self.assertIn("prepare_developer_dirs()", entrypoint)
         self.assertIn('chown -R developer:developer -- "$@"', entrypoint)
+        self.assertIn("prepare_shared_dirs()", setup)
+        self.assertIn('root chown -R 1000:1000 "${dirs[@]}"', setup)
         for path in (
             "/srv/devctl/shared/codex",
             "/srv/devctl/shared/claude",
@@ -224,6 +227,13 @@ class DeploymentTests(unittest.TestCase):
             "/srv/devctl/ccgram",
         ):
             self.assertIn(path, entrypoint)
+            self.assertIn(f'"$STATE{path.removeprefix("/srv/devctl")}"', setup)
+
+        update = setup[setup.index("update_cmd() {") : setup.index("teardown_cmd() {")]
+        self.assertLess(
+            update.index("prepare_shared_dirs"),
+            update.index("compose_hub up -d --pull always"),
+        )
 
     def test_setup_has_only_the_small_workflow(self) -> None:
         result = subprocess.run(

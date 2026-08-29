@@ -68,6 +68,18 @@ prepare_projects_dir() {
   install -d -m 0700 "$PROJECTS"
 }
 
+prepare_shared_dirs() {
+  local -a dirs=(
+    "$STATE/shared/codex"
+    "$STATE/shared/claude"
+    "$STATE/shared/gh"
+    "$STATE/ccgram"
+  )
+  root install -d -m 0700 "${dirs[@]}"
+  # All user-facing tools run as the image's fixed developer UID/GID.
+  root chown -R 1000:1000 "${dirs[@]}"
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -157,8 +169,9 @@ install_cmd() {
   prepare_projects_dir
   [[ $entrypoint =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid Traefik entrypoint"
   [[ -z $resolver || $resolver =~ ^[A-Za-z0-9_.-]+$ ]] || die "invalid certificate resolver"
-  root install -d -m 0755 "$STATE/herdr" "$STATE/herdr/run" "$STATE/ccgram" "$STATE/projects"
-  root install -d -m 0700 "$STATE/secrets" "$STATE/shared/codex" "$STATE/shared/claude" "$STATE/shared/gh"
+  root install -d -m 0755 "$STATE/herdr" "$STATE/herdr/run" "$STATE/projects"
+  root install -d -m 0700 "$STATE/secrets"
+  prepare_shared_dirs
   root install -d -m 0755 "$STATE/ssh"
   root touch "$STATE/ssh/authorized_keys"
   root chmod 0600 "$STATE/ssh/authorized_keys"
@@ -483,6 +496,7 @@ update_cmd() {
   ensure_bundle true
   load_config
   prepare_projects_dir
+  prepare_shared_dirs
 
   local -a files=()
   local file name agent hub_container telegram_container telegram_status='' restart_telegram=false update_hub=false
