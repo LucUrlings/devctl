@@ -90,6 +90,8 @@ ssh dev-<project>
 
 VS Code Remote SSH should open `/workspace/project`. Repository data, SSH host keys, and `/home/developer/.vscode-server` persist across recreation, so disconnecting does not stop the workspace.
 
+For an SSH Git remote, add `ForwardAgent yes` to that project block. Devctl never mounts a private SSH key; only use agent forwarding with trusted workspaces.
+
 ## Operations
 
 ```bash

@@ -17,6 +17,9 @@ DEV_ENTER = (ROOT / "images/hub/rootfs/usr/local/bin/dev-enter").read_text(
 WORKSPACE_ENTRYPOINT = (
     ROOT / "images/workspace/rootfs/usr/local/bin/workspace-entrypoint"
 ).read_text(encoding="utf-8")
+SSHD_CONFIG = (
+    ROOT / "images/workspace/rootfs/etc/ssh/sshd_config.d/99-devctl.conf"
+).read_text(encoding="utf-8")
 
 
 class DeploymentTests(unittest.TestCase):
@@ -189,6 +192,10 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("/ssh-host-keys:/etc/ssh/devctl-host-keys", WORKSPACE)
         self.assertIn("/vscode-server:/home/developer/.vscode-server", WORKSPACE)
         self.assertIn('"127.0.0.1:${SSH_PORT:?set SSH_PORT}:22"', WORKSPACE)
+
+    def test_ssh_agent_forwarding_uses_openssh_managed_socket(self) -> None:
+        self.assertIn("AllowAgentForwarding yes", SSHD_CONFIG)
+        self.assertNotIn("SSH_AUTH_SOCK=", SSHD_CONFIG)
 
     def test_http_routes_are_private_and_use_oauth(self) -> None:
         self.assertIn('- "8080"', WORKSPACE)
