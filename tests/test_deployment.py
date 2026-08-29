@@ -114,6 +114,9 @@ class DeploymentTests(unittest.TestCase):
         for preserved in ("projects", "shared", "ssh", "secrets"):
             self.assertNotIn(f'root mv -- "$STATE/{preserved}"', reset)
         self.assertIn('workspace_compose "$name" "$file" up -d --force-recreate', reset)
+        self.assertIn("trap '", reset)
+        self.assertIn("restart_telegram=false", reset)
+        self.assertIn("trap - EXIT", reset)
         self.assertLess(
             reset.index('root mv -- "$STATE/ccgram"'),
             reset.index('workspace_compose "$name"'),
@@ -127,7 +130,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("compose_hub --profile telegram start telegram", update)
         self.assertNotIn("start_project_agent", update)
 
-    def test_update_checks_installation_before_downloading_files(self) -> None:
+    def test_stateful_commands_check_installation_before_doing_work(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)
             setup = temporary / "setup.sh"
@@ -139,20 +142,32 @@ class DeploymentTests(unittest.TestCase):
                 '#!/bin/sh\ntouch "$CURL_CALLED"\nexit 99\n', encoding="utf-8"
             )
             fake_curl.chmod(0o755)
-            result = subprocess.run(
-                [str(setup), "update"],
-                check=False,
-                capture_output=True,
-                text=True,
-                env=os.environ
-                | {
-                    "CURL_CALLED": str(called),
-                    "PATH": f"{temporary}:{os.environ['PATH']}",
-                },
+            environment = os.environ | {
+                "CURL_CALLED": str(called),
+                "PATH": f"{temporary}:{os.environ['PATH']}",
+            }
+            commands = (
+                ("create", "https://github.com/owner/repository"),
+                ("agent", "project", "codex"),
+                ("update",),
+                ("reset-sessions",),
+                ("teardown", "project"),
+                ("list",),
+                ("telegram",),
+                ("login", "codex"),
             )
-            self.assertEqual(result.returncode, 2)
-            self.assertIn("run './setup.sh install' first", result.stderr)
-            self.assertFalse(called.exists())
+            for command in commands:
+                with self.subTest(command=command[0]):
+                    result = subprocess.run(
+                        [str(setup), *command],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        env=environment,
+                    )
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("run './setup.sh install' first", result.stderr)
+                    self.assertFalse(called.exists())
 
     def test_setup_validates_inputs_and_allocates_real_ports(self) -> None:
         self.assertIn("invalid Traefik entrypoint", SETUP)

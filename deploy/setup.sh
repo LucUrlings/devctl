@@ -533,6 +533,7 @@ reset_sessions_cmd() {
   fi
   if [[ $telegram_status == running || $telegram_status == created || $telegram_status == restarting ]]; then
     restart_telegram=true
+    trap 'if [[ ${restart_telegram:-false} == true ]]; then compose_hub --profile telegram up -d telegram >/dev/null 2>&1 || true; fi' EXIT
     compose_hub --profile telegram stop telegram
   fi
   compose_hub stop herdr
@@ -557,7 +558,9 @@ reset_sessions_cmd() {
   if [[ $restart_telegram == true ]]; then
     compose_hub --profile telegram up -d --force-recreate telegram
     wait_healthy devctl-hub "$HERE/hub.env" "$HERE/hub.compose.yml" telegram
+    restart_telegram=false
   fi
+  trap - EXIT
   echo "Session state reset. Start a clean agent with './setup.sh agent <project> codex'."
   echo "Backup: $backup"
 }
@@ -636,14 +639,14 @@ telegram_cmd() {
 main() {
   case ${1:-} in
     install) shift; install_cmd "$@";;
-    create) (($# >= 2)) || die "create requires a repository URL"; shift; create_cmd "$@";;
-    agent) shift; agent_cmd "$@";;
+    create) require_installed; (($# >= 2)) || die "create requires a repository URL"; shift; create_cmd "$@";;
+    agent) require_installed; shift; agent_cmd "$@";;
     update) require_installed; refresh_self "$@"; shift; update_cmd "$@";;
     reset-sessions) require_installed; refresh_self "$@"; shift; reset_sessions_cmd "$@";;
-    teardown) shift; teardown_cmd "$@";;
-    list) list_cmd;;
-    telegram) shift; telegram_cmd "$@";;
-    login) shift; login_cmd "$@";;
+    teardown) require_installed; shift; teardown_cmd "$@";;
+    list) require_installed; list_cmd;;
+    telegram) require_installed; shift; telegram_cmd "$@";;
+    login) require_installed; shift; login_cmd "$@";;
     -h|--help|help) usage;;
     *) usage; exit 2;;
   esac
