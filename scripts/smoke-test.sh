@@ -18,6 +18,32 @@ for image in "$hub_image" "$workspace_image"; do
     /home/developer/.local/share/uv/tools/ccgram/bin/python -c "import ccgram, msgpack"
   '
 done
+docker run --rm --entrypoint bash "$hub_image" -c '
+  install -d -o developer -g developer /srv/devctl/shared/codex /srv/devctl/ccgram
+  jq -n '\''
+    {hooks: {
+      SessionStart: [
+        {hooks: [{type: "command", name: "ccgram-session-tracker",
+                  command: "/usr/local/bin/python -m ccgram.main hook --provider codex",
+                  timeout: 5}]},
+        {hooks: [{type: "command", command: "bash /srv/devctl/shared/codex/herdr-agent-state.sh session",
+                  timeout: 10}]}
+      ],
+      Stop: [{hooks: [{type: "command", name: "ccgram-session-tracker",
+                       command: "/usr/local/bin/python -m ccgram.main hook --provider codex",
+                       timeout: 5}]}]
+    }}
+  '\'' > /srv/devctl/shared/codex/hooks.json
+  chown developer:developer /srv/devctl/shared/codex/hooks.json
+  runuser --user developer -- env HOME=/home/developer CCGRAM_DIR=/srv/devctl/ccgram \
+    ccgram hook --provider codex --uninstall >/dev/null
+  runuser --user developer -- env HOME=/home/developer CCGRAM_DIR=/srv/devctl/ccgram \
+    ccgram hook --provider codex --install >/dev/null
+  ! grep -q "/usr/local/bin/python -m ccgram.main hook" /srv/devctl/shared/codex/hooks.json
+  grep -q "/home/developer/.local/share/uv/tools/ccgram/bin/python -m ccgram.main hook --provider codex" \
+    /srv/devctl/shared/codex/hooks.json
+  grep -q "herdr-agent-state.sh" /srv/devctl/shared/codex/hooks.json
+'
 docker run --rm --entrypoint sh "$workspace_image" -c '
   test "$(npm prefix --global)" = /home/developer/.local
   runuser --user developer -- sh -c '\''

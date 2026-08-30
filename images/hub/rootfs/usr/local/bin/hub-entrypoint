@@ -54,11 +54,23 @@ case "$mode" in
     }
     prepare_developer_dirs \
       /srv/devctl/ccgram /srv/devctl/shared/codex /srv/devctl/shared/claude
+    # CCGram treats every `python -m ccgram.main hook` command as current, even
+    # when it points at an obsolete Python environment. Reinstalling only its
+    # own hooks repairs persisted configs while leaving Herdr's hooks intact.
+    runuser --user developer -- env \
+      HOME=/home/developer \
+      CLAUDE_CONFIG_DIR=/srv/devctl/shared/claude \
+      CCGRAM_DIR=/srv/devctl/ccgram \
+      ccgram hook --provider claude --uninstall >/dev/null
     runuser --user developer -- env \
       HOME=/home/developer \
       CLAUDE_CONFIG_DIR=/srv/devctl/shared/claude \
       CCGRAM_DIR=/srv/devctl/ccgram \
       ccgram hook --provider claude --install >/dev/null
+    runuser --user developer -- env \
+      HOME=/home/developer \
+      CCGRAM_DIR=/srv/devctl/ccgram \
+      ccgram hook --provider codex --uninstall >/dev/null
     runuser --user developer -- env \
       HOME=/home/developer \
       CCGRAM_DIR=/srv/devctl/ccgram \

@@ -226,6 +226,17 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("TELEGRAM_AUTOCLOSE_DONE_MINUTES:-0", HUB)
         self.assertIn("TELEGRAM_AUTOCLOSE_DEAD_MINUTES:-0", HUB)
 
+    def test_telegram_replaces_stale_ccgram_hooks(self) -> None:
+        entrypoint = (
+            ROOT / "images/hub/rootfs/usr/local/bin/hub-entrypoint"
+        ).read_text()
+        for provider in ("claude", "codex"):
+            uninstall = f"ccgram hook --provider {provider} --uninstall"
+            install = f"ccgram hook --provider {provider} --install"
+            self.assertIn(uninstall, entrypoint)
+            self.assertIn(install, entrypoint)
+            self.assertLess(entrypoint.index(uninstall), entrypoint.index(install))
+
     def test_dev_enter_is_label_based_and_safe(self) -> None:
         result = subprocess.run(
             [str(ROOT / "images/hub/rootfs/usr/local/bin/dev-enter"), "../bad", "shell"],
