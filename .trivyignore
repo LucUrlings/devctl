@@ -1,5 +1,7 @@
 # Owner: @LucUrlings; latest Docker Buildx embeds go-archive v0.2.1; expires 2026-09-30.
 CVE-2026-17106
+# Owner: @LucUrlings; latest Buildx 0.36.1 and Compose 5.5.0 embed x/crypto 0.54.0, but these CLI-only binaries do not expose the affected SSH authentication server path; expires 2026-09-30.
+CVE-2026-56854
 # Owner: @LucUrlings; active setuptools is 80.9.0 but base-image SBOM is stale; expires 2026-09-30.
 CVE-2025-47273
 # Owner: @LucUrlings; latest setuptools 80.9.0 vendors jaraco.context 5.3.0; expires 2026-09-30.
