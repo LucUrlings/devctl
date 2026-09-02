@@ -1,129 +1,56 @@
-# Devctl
+# Hermes development server
 
-Docker workspaces with code-server, VS Code SSH, Herdr, Codex, Claude, and optional Telegram access.
+A small Docker Compose deployment for running the official Hermes Agent gateway. Hermes keeps its configuration, credentials, sessions, memory, skills, and projects in one local `data/` directory.
 
 ## TLDR
 
-Run on the Docker server:
+Run this on the Docker server:
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/LucUrlings/devctl/main/deploy/setup.sh?$(date +%s)" -o setup.sh
-chmod +x setup.sh
+cp .env.example .env
+sed -i "s/^PUID=.*/PUID=$(id -u)/; s/^PGID=.*/PGID=$(id -g)/" .env
+mkdir -p data/projects
 
-./setup.sh install \
-  --base-domain <base-domain> \
-  --traefik-network <traefik-network> \
-  --auth-middleware <oauth-middleware>
-
-./setup.sh login github
-./setup.sh login codex
-./setup.sh create <repo> --preview-port <port>
-./setup.sh agent <project> codex
+docker compose run --rm hermes setup
+docker compose run --rm hermes config set terminal.cwd /opt/data/projects
+docker compose up -d hermes
+docker compose logs -f hermes
 ```
 
-Open the printed `https://<project>.code.<base-domain>` URL from a phone or browser.
+During `hermes setup`, select your model provider and Telegram. Hermes writes secrets into `data/.env`; that directory is ignored by Git.
 
 ## How it works
 
-The hub runs one Herdr server and, optionally, one stock CCGram process. Each repository gets one isolated workspace containing code-server, SSH, Codex, Claude, GitHub CLI, Herdr, Docker CLI, Node.js, and Python.
+- The official `nousresearch/hermes-agent` image runs `hermes gateway run` under its built-in s6 supervisor.
+- `./data` is mounted at `/opt/data`, the official Hermes data location.
+- Repositories belong in `./data/projects` on the host and `/opt/data/projects` inside Hermes.
+- `terminal.cwd` makes gateway conversations start in the shared projects directory.
+- Telegram uses outbound long polling, so Hermes needs no inbound port.
+- The container runs with the host UID and GID from `.env`, keeping bind-mounted files editable on the host.
 
-`./setup.sh create <repo>` clones and starts a workspace. It does not start an agent. Start one explicitly:
+Do not run two Hermes gateway containers against the same `data/` directory.
 
-```bash
-./setup.sh agent <project> codex
-./setup.sh agent <project> claude
-./setup.sh agent <project> shell
-```
-
-The command creates or reuses a matching Herdr tab and runs one process in the project repository, which is also available at `/workspace/project`. CCGram discovers active Codex and Claude panes using its upstream Herdr backend.
-
-There is no custom CCGram patch, prompt relay, background reconciler, or automatic agent restart. If an agent exits, its topic ends. Start it again explicitly with `./setup.sh agent <project> codex|claude`.
-
-## Requirements and routes
-
-- Linux Docker server with Docker Compose
-- Existing Traefik network and OAuth middleware
-- Wildcard DNS for `*.code.<base-domain>` and `*.dev.<base-domain>`
-
-Traefik routes `<project>.code.<base-domain>` to code-server on `8080` and `<project>.dev.<base-domain>` to the preview port. Both use TLS and OAuth; neither HTTP port is published on the host.
-
-The preview server must listen on `0.0.0.0:<port>` inside the workspace. Port `3000` is the default; pass `--preview-port <port>` when the project uses another port.
-
-Agents can read the exact routes from `DEVCTL_CODE_URL` and `DEVCTL_PREVIEW_URL`.
-
-## Authentication
+## Useful commands
 
 ```bash
-./setup.sh login github
-./setup.sh login codex
-./setup.sh login claude
+# Stop/start
+docker compose stop hermes
+docker compose up -d hermes
+
+# Logs
+docker compose logs -f hermes
+
+# Reconfigure the model or Telegram
+docker compose run --rm hermes setup
+
+# Update to the image pinned in .env
+docker compose pull hermes
+docker compose up -d hermes
+
+# Open the Hermes CLI against the same persistent state
+docker compose run --rm hermes
 ```
 
-Credentials persist under `/srv/devctl/shared` and are available to every trusted workspace.
+Back up the complete `data/` directory. It contains both secrets and project data.
 
-## Telegram (optional)
-
-1. Create a bot with BotFather.
-2. Create a private Telegram supergroup and enable Topics.
-3. Disable Group Privacy for the bot in BotFather.
-4. Add the bot as an administrator with permission to manage topics.
-5. Obtain the allowed numeric user IDs and the group ID beginning with `-100`.
-6. Put the token in a temporary file and run `chmod 600 <bot-token-file>`.
-7. Run:
-
-```bash
-./setup.sh telegram \
-  --token-file <bot-token-file> \
-  --allowed-users <user-id>[,<user-id>] \
-  --group-id <-100-supergroup-id>
-```
-
-Without this command, Telegram is not started and no Telegram configuration is required.
-
-## SSH and VS Code
-
-`create` prints a `Host dev-<project>` block. Add it to the laptop’s `~/.ssh/config`, configure its `ProxyJump` server alias, then run:
-
-```bash
-ssh dev-<project>
-```
-
-VS Code Remote SSH should open `/workspace/project`. Repository data, SSH host keys, and `/home/developer/.vscode-server` persist across recreation, so disconnecting does not stop the workspace.
-
-For an SSH Git remote, add `ForwardAgent yes` to that project block. Devctl never mounts a private SSH key; only use agent forwarding with trusted workspaces.
-
-## Operations
-
-```bash
-./setup.sh list
-./setup.sh update
-./setup.sh update <project>
-./setup.sh agent <project> codex
-./setup.sh teardown <project>
-./setup.sh teardown --all
-```
-
-`update` refreshes `setup.sh`, Compose files, and images. It deliberately does not start or resume agents.
-
-### Clean session reset
-
-After upgrading from a version that used automatic session recovery, reset old bindings once:
-
-```bash
-./setup.sh update
-./setup.sh reset-sessions
-./setup.sh agent <project> codex
-```
-
-`reset-sessions` requires typing `RESET`. It archives Herdr and CCGram state under `/srv/devctl/backups`, then recreates the hub and workspaces so their session mounts point at the fresh state. It does not modify repositories, credentials, project configuration, SSH keys, or secrets. Delete obsolete Telegram topics manually after the new topic works.
-
-## Security and backups
-
-Every workspace receives `/var/run/docker.sock`, which is effectively root access to the server. Use only trusted repositories and agents. The hub also needs the socket to enter labeled workspaces.
-
-Back up `/srv/devctl/projects`, `/srv/devctl/shared`, `/srv/devctl/herdr`, `/srv/devctl/ccgram`, `/srv/devctl/ssh`, and `/srv/devctl/secrets`.
-
-Images:
-
-- `ghcr.io/lucurlings/devctl-hub:latest`
-- `ghcr.io/lucurlings/devctl-workspace:latest`
+The deployment follows the official [Hermes Docker documentation](https://hermes-agent.nousresearch.com/docs/user-guide/docker) and [Telegram setup](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/telegram).
