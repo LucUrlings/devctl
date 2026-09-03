@@ -69,7 +69,7 @@ The dashboard deliberately uses native Nous OAuth instead of the Traefik OAuth m
 - DNS records for `DASHBOARD_HOST`, `CODE_HOST`, and `DEV_HOST` pointing to the server
 - TLS configured by the existing Traefik deployment
 
-The companion image supports `linux/amd64` and `linux/arm64`. It contains code-server, Docker CLI with Compose, Git, Python, curl, jq, ripgrep, and basic terminal tools.
+The companion image supports `linux/amd64` and `linux/arm64`. It contains code-server, Node.js LTS with npm, Docker CLI with Compose, Git, Python, curl, jq, ripgrep, and basic terminal tools.
 
 ## Projects
 
@@ -97,7 +97,7 @@ docker compose logs -f companion
 # Reconfigure the model or Telegram
 docker compose run --rm hermes setup
 
-# Update to the image pinned in .env
+# Pull the images configured in .env
 docker compose pull
 docker compose up -d
 

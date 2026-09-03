@@ -1,4 +1,5 @@
 FROM docker:29.7.2-cli AS docker-cli
+FROM node:24.20.0-bookworm-slim AS node
 
 FROM ghcr.io/coder/code-server:4.135.0
 
@@ -7,6 +8,7 @@ FROM ghcr.io/coder/code-server:4.135.0
 # hadolint ignore=DL3002
 USER root
 
+COPY --from=node /usr/local /usr/local
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 

@@ -29,7 +29,7 @@ jobs:
       - name: Smoke test tools
         run: |
           docker run --rm --entrypoint sh devctl-companion:test -c \
-            'code-server --version && docker --version && docker compose version && git --version && python3 --version'
+            'code-server --version && docker --version && docker compose version && git --version && node --version && npm --version && python3 --version'
 
   publish:
     if: github.event_name != 'pull_request'
