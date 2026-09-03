@@ -8,9 +8,78 @@ services:
     environment:
       HERMES_UID: ${PUID:?Set PUID in .env}
       HERMES_GID: ${PGID:?Set PGID in .env}
+      DEVCTL_CODE_URL: https://${CODE_HOST:?Set CODE_HOST in .env}
+      DEVCTL_DEV_URL: https://${DEV_HOST:?Set DEV_HOST in .env}
+      DEVCTL_DEV_PORT: ${DEV_PORT:-3000}
+      PROJECTS_PATH: /opt/data/projects
     volumes:
-      - ./data:/opt/data
+      - ${DATA_PATH:?Set absolute DATA_PATH in .env}:/opt/data
     logging:
       options:
         max-size: 10m
         max-file: "3"
+    networks:
+      - internal
+
+  companion:
+    image: ${COMPANION_IMAGE:-ghcr.io/lucurlings/devctl-companion:latest}
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID:?Set PUID in .env}
+      PGID: ${PGID:?Set PGID in .env}
+      DEVCTL_CODE_URL: https://${CODE_HOST}
+      DEVCTL_DEV_URL: https://${DEV_HOST}
+      DEVCTL_DEV_PORT: ${DEV_PORT:-3000}
+      PROJECTS_PATH: ${DATA_PATH}/projects
+    working_dir: ${DATA_PATH}/projects
+    command:
+      - code-server
+      - --bind-addr
+      - 0.0.0.0:8080
+      - --auth
+      - none
+      - --disable-telemetry
+      - ${DATA_PATH}/projects
+    volumes:
+      # The identical host/container path lets nested Docker bind mounts work.
+      - ${DATA_PATH}:${DATA_PATH}
+      - ./companion-data/code-server:/home/coder/.local/share/code-server
+      - ./companion-data/config:/home/coder/.config/code-server
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - "8080"
+      - "${DEV_PORT:-3000}"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:?Set TRAEFIK_NETWORK in .env}
+      traefik.http.routers.hermes-code.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.hermes-code.rule: Host(`${CODE_HOST}`)
+      traefik.http.routers.hermes-code.middlewares: ${TRAEFIK_AUTH_MIDDLEWARE:?Set TRAEFIK_AUTH_MIDDLEWARE in .env}
+      traefik.http.routers.hermes-code.tls: "true"
+      traefik.http.routers.hermes-code.service: hermes-code
+      traefik.http.services.hermes-code.loadbalancer.server.port: "8080"
+      traefik.http.routers.hermes-dev.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.hermes-dev.rule: Host(`${DEV_HOST}`)
+      traefik.http.routers.hermes-dev.middlewares: ${TRAEFIK_AUTH_MIDDLEWARE}
+      traefik.http.routers.hermes-dev.tls: "true"
+      traefik.http.routers.hermes-dev.service: hermes-dev
+      traefik.http.services.hermes-dev.loadbalancer.server.port: "${DEV_PORT:-3000}"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - internal
+      - traefik
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  internal:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK}

@@ -1,5 +1,6 @@
 .env
 data/
+companion-data/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
