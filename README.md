@@ -16,15 +16,17 @@ sed -i "s/^PUID=.*/PUID=$(id -u)/; s/^PGID=.*/PGID=$(id -g)/" .env
 sed -i "s|^DATA_PATH=.*|DATA_PATH=$PWD/data|" .env
 mkdir -p "$PWD/data/projects"
 
-# Edit .env: set your Traefik network, OAuth middleware, and three DNS names.
+# Generate Hermes's session-signing secret, then choose its login password below.
+sed -i "s/^HERMES_DASHBOARD_BASIC_AUTH_SECRET=.*/HERMES_DASHBOARD_BASIC_AUTH_SECRET=$(openssl rand -hex 32)/" .env
+chmod 600 .env
+
+# Edit .env: set your Traefik network, Google OAuth middleware, three DNS
+# names, and HERMES_DASHBOARD_BASIC_AUTH_PASSWORD.
 nano .env
 
 docker compose run --rm -e HERMES_DASHBOARD=0 hermes setup
 docker compose run --rm -e HERMES_DASHBOARD=0 hermes \
   config set terminal.cwd /opt/data/projects
-dashboard_host=$(sed -n 's/^DASHBOARD_HOST=//p' .env)
-docker compose run --rm -e HERMES_DASHBOARD=0 hermes dashboard register \
-  --redirect-uri "https://${dashboard_host}/auth/callback"
 
 # Trust HTTPS headers from your existing Traefik network.
 traefik_network=$(sed -n 's/^TRAEFIK_NETWORK=//p' .env)
@@ -36,9 +38,9 @@ docker compose run --rm -e HERMES_DASHBOARD=0 hermes \
 docker compose up -d
 ```
 
-During `hermes setup`, select your model provider, Telegram, and log into Nous Portal. `dashboard register` adds the dashboard OAuth client to `data/.env`; that directory is ignored by Git.
+During `hermes setup`, select your model provider and optionally configure Telegram. Do not run `hermes dashboard register`; Nous Portal OAuth is not used.
 
-Open `DASHBOARD_HOST` for Hermes or use Telegram. Open `CODE_HOST` for code-server. Start a development server from its terminal, make it listen on `0.0.0.0:$DEV_PORT`, then open `DEV_HOST`.
+Open `DASHBOARD_HOST`, pass Google OAuth, then sign in with `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` and `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD`. Open `CODE_HOST` for code-server. Start a development server from its terminal, make it listen on `0.0.0.0:$DEV_PORT`, then open `DEV_HOST`.
 
 The Compose file can live anywhere. `DATA_PATH` controls where Hermes state and repositories live; the TLDR places them in `$DEPLOY_DIR/data`.
 
@@ -52,7 +54,7 @@ The Compose file can live anywhere. `DATA_PATH` controls where Hermes state and 
 - Telegram uses outbound long polling, so Hermes needs no inbound port.
 - Hermes's built-in dashboard runs alongside the gateway under s6 on port 9119.
 - Hermes receives 1 GB of shared memory so its bundled browser automation can run reliably.
-- Traefik routes `DASHBOARD_HOST` to it, while Hermes's supported Nous OAuth protects the dashboard itself.
+- Traefik routes `DASHBOARD_HOST` through your existing Google OAuth middleware; Hermes basic authentication is the inner login.
 - The container runs with the host UID and GID from `.env`, keeping bind-mounted files editable on the host.
 - Traefik sends `CODE_HOST` to code-server on port 8080 and `DEV_HOST` to `DEV_PORT`.
 - No HTTP service publishes a host port. The code-server and development routes use your existing Traefik OAuth middleware.
@@ -64,7 +66,7 @@ Do not run two Hermes gateway containers against the same `data/` directory.
 
 The companion mounts `/var/run/docker.sock`. This gives it effectively root-level control of the Docker server. Only use it with repositories and extensions you trust.
 
-The dashboard deliberately uses native Nous OAuth instead of the Traefik OAuth middleware, avoiding two consecutive login screens. The configured Traefik network CIDR is trusted only for forwarded HTTPS metadata; every dashboard request still requires Hermes authentication. Do not attach untrusted containers to that network.
+The dashboard deliberately uses two authentication layers: your Traefik Google OAuth middleware and Hermes basic authentication. The stable `HERMES_DASHBOARD_BASIC_AUTH_SECRET` keeps login sessions valid across container restarts. The configured Traefik network CIDR is trusted only for forwarded HTTPS metadata. Do not attach untrusted containers to that network.
 
 ## Requirements
 

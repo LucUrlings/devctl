@@ -18,6 +18,9 @@ services:
       HERMES_DASHBOARD_HOST: 0.0.0.0
       HERMES_DASHBOARD_PORT: "9119"
       HERMES_DASHBOARD_PUBLIC_URL: https://${DASHBOARD_HOST:?Set DASHBOARD_HOST in .env}
+      HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:-admin}
+      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:?Set HERMES_DASHBOARD_BASIC_AUTH_PASSWORD in .env}
+      HERMES_DASHBOARD_BASIC_AUTH_SECRET: ${HERMES_DASHBOARD_BASIC_AUTH_SECRET:?Set HERMES_DASHBOARD_BASIC_AUTH_SECRET in .env}
     volumes:
       - ${DATA_PATH:?Set absolute DATA_PATH in .env}:/opt/data
     expose:
@@ -27,6 +30,7 @@ services:
       traefik.docker.network: ${TRAEFIK_NETWORK:?Set TRAEFIK_NETWORK in .env}
       traefik.http.routers.hermes-dashboard.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
       traefik.http.routers.hermes-dashboard.rule: Host(`${DASHBOARD_HOST}`)
+      traefik.http.routers.hermes-dashboard.middlewares: ${TRAEFIK_AUTH_MIDDLEWARE:?Set TRAEFIK_AUTH_MIDDLEWARE in .env}
       traefik.http.routers.hermes-dashboard.tls: "true"
       traefik.http.routers.hermes-dashboard.service: hermes-dashboard
       traefik.http.services.hermes-dashboard.loadbalancer.server.port: "9119"

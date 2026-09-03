@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate Compose
+        env:
+          HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ci-only
+          HERMES_DASHBOARD_BASIC_AUTH_SECRET: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
         run: docker compose --env-file .env.example -f compose.yml config --quiet
       - name: Validate shell
         run: docker run --rm -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 companion/entrypoint.sh
