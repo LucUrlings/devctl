@@ -15,17 +15,29 @@ sed -i "s/^PUID=.*/PUID=$(id -u)/; s/^PGID=.*/PGID=$(id -g)/" .env
 sed -i "s|^DATA_PATH=.*|DATA_PATH=$PWD/data|" .env
 mkdir -p "$PWD/data/projects"
 
-# Edit .env: set your Traefik network, OAuth middleware, and two DNS names.
+# Edit .env: set your Traefik network, OAuth middleware, and three DNS names.
 nano .env
 
-docker compose run --rm hermes setup
-docker compose run --rm hermes config set terminal.cwd /opt/data/projects
+docker compose run --rm -e HERMES_DASHBOARD=0 hermes setup
+docker compose run --rm -e HERMES_DASHBOARD=0 hermes \
+  config set terminal.cwd /opt/data/projects
+dashboard_host=$(sed -n 's/^DASHBOARD_HOST=//p' .env)
+docker compose run --rm -e HERMES_DASHBOARD=0 hermes dashboard register \
+  --redirect-uri "https://${dashboard_host}/auth/callback"
+
+# Trust HTTPS headers from your existing Traefik network.
+traefik_network=$(sed -n 's/^TRAEFIK_NETWORK=//p' .env)
+traefik_cidr=$(docker network inspect "$traefik_network" \
+  --format '{{(index .IPAM.Config 0).Subnet}}')
+docker compose run --rm -e HERMES_DASHBOARD=0 hermes \
+  config set dashboard.trusted_proxies \
+  "[\"${traefik_cidr}\"]"
 docker compose up -d
 ```
 
-During `hermes setup`, select your model provider and Telegram. Hermes writes secrets into `data/.env`; that directory is ignored by Git.
+During `hermes setup`, select your model provider, Telegram, and log into Nous Portal. `dashboard register` adds the dashboard OAuth client to `data/.env`; that directory is ignored by Git.
 
-Open the URL configured as `CODE_HOST`. Start a development server from the code-server terminal, making it listen on `0.0.0.0:$DEV_PORT`, then open `DEV_HOST`.
+Open `DASHBOARD_HOST` for Hermes or use Telegram. Open `CODE_HOST` for code-server. Start a development server from its terminal, make it listen on `0.0.0.0:$DEV_PORT`, then open `DEV_HOST`.
 
 ## How it works
 
@@ -35,22 +47,26 @@ Open the URL configured as `CODE_HOST`. Start a development server from the code
 - The companion mounts `DATA_PATH` at the same absolute path used on the host, and code-server opens `DATA_PATH/projects`.
 - `terminal.cwd` makes gateway conversations start in the shared projects directory.
 - Telegram uses outbound long polling, so Hermes needs no inbound port.
+- Hermes's built-in dashboard runs alongside the gateway under s6 on port 9119.
+- Traefik routes `DASHBOARD_HOST` to it, while Hermes's supported Nous OAuth protects the dashboard itself.
 - The container runs with the host UID and GID from `.env`, keeping bind-mounted files editable on the host.
 - Traefik sends `CODE_HOST` to code-server on port 8080 and `DEV_HOST` to `DEV_PORT`.
-- Neither HTTP service publishes a host port. Both routes use your existing Traefik OAuth middleware.
+- No HTTP service publishes a host port. The code-server and development routes use your existing Traefik OAuth middleware.
 - Hermes and the companion share an internal Docker network.
 - Matching host/container project paths allow repository Compose files to use bind mounts through the host Docker socket.
-- Hermes and companion both receive `DEVCTL_CODE_URL`, `DEVCTL_DEV_URL`, and `DEVCTL_DEV_PORT`.
+- Hermes and companion both receive `DEVCTL_DASHBOARD_URL`, `DEVCTL_CODE_URL`, `DEVCTL_DEV_URL`, and `DEVCTL_DEV_PORT`.
 
 Do not run two Hermes gateway containers against the same `data/` directory.
 
 The companion mounts `/var/run/docker.sock`. This gives it effectively root-level control of the Docker server. Only use it with repositories and extensions you trust.
 
+The dashboard deliberately uses native Nous OAuth instead of the Traefik OAuth middleware, avoiding two consecutive login screens. The configured Traefik network CIDR is trusted only for forwarded HTTPS metadata; every dashboard request still requires Hermes authentication. Do not attach untrusted containers to that network.
+
 ## Requirements
 
 - Docker Engine with Docker Compose
 - Existing Traefik network and OAuth middleware
-- DNS records for `CODE_HOST` and `DEV_HOST` pointing to the server
+- DNS records for `DASHBOARD_HOST`, `CODE_HOST`, and `DEV_HOST` pointing to the server
 - TLS configured by the existing Traefik deployment
 
 The companion image supports `linux/amd64` and `linux/arm64`. It contains code-server, Docker CLI with Compose, Git, Python, curl, jq, ripgrep, and basic terminal tools.

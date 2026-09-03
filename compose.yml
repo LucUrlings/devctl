@@ -2,7 +2,7 @@ name: hermes
 
 services:
   hermes:
-    image: ${HERMES_IMAGE:-nousresearch/hermes-agent:v2026.8.31}
+    image: ${HERMES_IMAGE:-nousresearch/hermes-agent:latest}
     restart: unless-stopped
     command: ["gateway", "run"]
     environment:
@@ -10,16 +10,38 @@ services:
       HERMES_GID: ${PGID:?Set PGID in .env}
       DEVCTL_CODE_URL: https://${CODE_HOST:?Set CODE_HOST in .env}
       DEVCTL_DEV_URL: https://${DEV_HOST:?Set DEV_HOST in .env}
+      DEVCTL_DASHBOARD_URL: https://${DASHBOARD_HOST:?Set DASHBOARD_HOST in .env}
       DEVCTL_DEV_PORT: ${DEV_PORT:-3000}
       PROJECTS_PATH: /opt/data/projects
+      HERMES_DASHBOARD: "1"
+      HERMES_DASHBOARD_HOST: 0.0.0.0
+      HERMES_DASHBOARD_PORT: "9119"
+      HERMES_DASHBOARD_PUBLIC_URL: https://${DASHBOARD_HOST:?Set DASHBOARD_HOST in .env}
     volumes:
       - ${DATA_PATH:?Set absolute DATA_PATH in .env}:/opt/data
+    expose:
+      - "9119"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:?Set TRAEFIK_NETWORK in .env}
+      traefik.http.routers.hermes-dashboard.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.hermes-dashboard.rule: Host(`${DASHBOARD_HOST}`)
+      traefik.http.routers.hermes-dashboard.tls: "true"
+      traefik.http.routers.hermes-dashboard.service: hermes-dashboard
+      traefik.http.services.hermes-dashboard.loadbalancer.server.port: "9119"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:9119/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     logging:
       options:
         max-size: 10m
         max-file: "3"
     networks:
       - internal
+      - traefik
 
   companion:
     image: ${COMPANION_IMAGE:-ghcr.io/lucurlings/devctl-companion:latest}
@@ -29,6 +51,7 @@ services:
       PGID: ${PGID:?Set PGID in .env}
       DEVCTL_CODE_URL: https://${CODE_HOST}
       DEVCTL_DEV_URL: https://${DEV_HOST}
+      DEVCTL_DASHBOARD_URL: https://${DASHBOARD_HOST}
       DEVCTL_DEV_PORT: ${DEV_PORT:-3000}
       PROJECTS_PATH: ${DATA_PATH}/projects
     working_dir: ${DATA_PATH}/projects
