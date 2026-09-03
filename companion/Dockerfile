@@ -34,6 +34,7 @@ RUN apt-get update \
 COPY companion/entrypoint.sh /usr/local/bin/companion-entrypoint
 
 RUN chmod 0755 /usr/local/bin/companion-entrypoint \
+    && rm -f /usr/local/bin/fixuid \
     && mkdir -p /projects /home/coder/.local/share/code-server /home/coder/.config/code-server
 
 WORKDIR /projects

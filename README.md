@@ -7,7 +7,8 @@ A small Docker Compose deployment containing the official Hermes Agent gateway a
 Run this on the Docker server:
 
 ```bash
-mkdir -p ~/hermes-dev && cd ~/hermes-dev
+DEPLOY_DIR="$HOME/docker/hermes" # Change this to any directory you want.
+mkdir -p "$DEPLOY_DIR" && cd "$DEPLOY_DIR"
 curl -fsSLO https://raw.githubusercontent.com/LucUrlings/devctl/main/compose.yml
 curl -fsSL https://raw.githubusercontent.com/LucUrlings/devctl/main/.env.example -o .env
 
@@ -38,6 +39,8 @@ docker compose up -d
 During `hermes setup`, select your model provider, Telegram, and log into Nous Portal. `dashboard register` adds the dashboard OAuth client to `data/.env`; that directory is ignored by Git.
 
 Open `DASHBOARD_HOST` for Hermes or use Telegram. Open `CODE_HOST` for code-server. Start a development server from its terminal, make it listen on `0.0.0.0:$DEV_PORT`, then open `DEV_HOST`.
+
+The Compose file can live anywhere. `DATA_PATH` controls where Hermes state and repositories live; the TLDR places them in `$DEPLOY_DIR/data`.
 
 ## How it works
 
