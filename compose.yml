@@ -4,6 +4,7 @@ services:
   hermes:
     image: ${HERMES_IMAGE:-nousresearch/hermes-agent:latest}
     restart: unless-stopped
+    shm_size: 1gb
     command: ["gateway", "run"]
     environment:
       HERMES_UID: ${PUID:?Set PUID in .env}

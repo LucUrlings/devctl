@@ -48,6 +48,7 @@ Open `DASHBOARD_HOST` for Hermes or use Telegram. Open `CODE_HOST` for code-serv
 - `terminal.cwd` makes gateway conversations start in the shared projects directory.
 - Telegram uses outbound long polling, so Hermes needs no inbound port.
 - Hermes's built-in dashboard runs alongside the gateway under s6 on port 9119.
+- Hermes receives 1 GB of shared memory so its bundled browser automation can run reliably.
 - Traefik routes `DASHBOARD_HOST` to it, while Hermes's supported Nous OAuth protects the dashboard itself.
 - The container runs with the host UID and GID from `.env`, keeping bind-mounted files editable on the host.
 - Traefik sends `CODE_HOST` to code-server on port 8080 and `DEV_HOST` to `DEV_PORT`.
@@ -82,6 +83,8 @@ npm run dev -- --host 0.0.0.0 --port "$DEVCTL_DEV_PORT"
 ```
 
 The exact command depends on the repository. Hermes and companion can read the public URLs from `DEVCTL_CODE_URL` and `DEVCTL_DEV_URL`.
+
+All repositories can stay in the shared projects directory, but `DEV_HOST` is one preview route to one `DEV_PORT` in the companion. Run one preview server at a time unless you add more Traefik routes and ports yourself.
 
 ## Useful commands
 
