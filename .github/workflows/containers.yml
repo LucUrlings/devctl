@@ -32,7 +32,9 @@ jobs:
       - name: Smoke test tools
         run: |
           docker run --rm --entrypoint sh devctl-companion:test -c \
-            'code-server --version && docker --version && docker compose version && git --version && node --version && npm --version && python3 --version'
+            'code-server --version && docker --version && docker compose version && git --version && node --version && npm --version && python3 --version && dotnet --version'
+          docker run --rm -e PUID=1000 -e PGID=1000 devctl-companion:test sh -c \
+            'dotnet new console -o /projects/sdk-smoke --no-restore && dotnet run --project /projects/sdk-smoke'
 
   publish:
     if: github.event_name != 'pull_request'

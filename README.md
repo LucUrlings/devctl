@@ -75,7 +75,9 @@ The dashboard deliberately uses two authentication layers: your Traefik Google O
 - DNS records for `DASHBOARD_HOST`, `CODE_HOST`, and `DEV_HOST` pointing to the server
 - TLS configured by the existing Traefik deployment
 
-The companion image supports `linux/amd64` and `linux/arm64`. It contains code-server, Node.js LTS with npm, Docker CLI with Compose, Git, Python, curl, jq, ripgrep, and basic terminal tools.
+The companion image supports `linux/amd64` and `linux/arm64`. It contains code-server, Node.js 24 LTS with npm, the .NET 10 SDK, Docker CLI with Compose, Git, Python, curl, jq, ripgrep, and basic terminal tools. SDKs are installed in the image, so no server-side SDK installation or SDK bind mounts are needed.
+
+To get SDK updates on an existing deployment, keep your own `compose.yml` and run `docker compose pull companion && docker compose up -d companion`. Check them with `docker compose exec companion dotnet --version` and `docker compose exec companion node --version`.
 
 ## Projects
 
