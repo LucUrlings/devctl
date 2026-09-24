@@ -89,6 +89,12 @@ From code-server, open a terminal and run the repository's development command. 
 npm run dev -- --host 0.0.0.0 --port "$DEVCTL_DEV_PORT"
 ```
 
+For an ASP.NET Core project, run this from its directory:
+
+```bash
+dotnet run --urls "http://0.0.0.0:${DEVCTL_DEV_PORT}"
+```
+
 The exact command depends on the repository. Hermes and companion can read the public URLs from `DEVCTL_CODE_URL` and `DEVCTL_DEV_URL`.
 
 All repositories can stay in the shared projects directory, but `DEV_HOST` is one preview route to one `DEV_PORT` in the companion. Run one preview server at a time unless you add more Traefik routes and ports yourself.
