@@ -42,9 +42,12 @@ RUN chmod 0755 /usr/local/bin/companion-entrypoint \
     && ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
     && mkdir -p /projects /home/coder/.local/share/code-server /home/coder/.config/code-server
 
+# No optional workloads are installed; the SDK's first-run check cannot update
+# its system-wide state as the non-root coder user.
 ENV DOTNET_ROOT=/usr/share/dotnet \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
-    DOTNET_NOLOGO=1
+    DOTNET_NOLOGO=1 \
+    DOTNET_SKIP_WORKLOAD_INTEGRITY_CHECK=true
 
 WORKDIR /projects
 EXPOSE 8080 3000
